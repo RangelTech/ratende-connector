@@ -5,8 +5,9 @@
   Mesmo mecanismo do .exe (NSIS) e do .bat: escreve a politica
   ExtensionInstallForcelist do Chrome/Edge apontando pro update manifest
   hospedado. MSI faz isso nativo via RegistryValue, sem precisar de
-  Custom Action nem RequestExecutionLevel (msiexec ja pede elevacao
-  sozinho pra instalacao per-machine).
+  Custom Action. Instalacao per-user (HKCU, InstallPrivileges=limited):
+  nao pede elevacao/UAC, mas so vale pro usuario que instalou, nao pra
+  maquina toda.
 
   UpgradeCode fixo: NUNCA trocar, e o que garante que uma versao nova
   do MSI reconhece e substitui a anterior em vez de instalar duplicado.
@@ -19,7 +20,7 @@
            Manufacturer="Rangel Tech"
            UpgradeCode="b0679204-8fce-46b1-999b-e7701c41bc02">
 
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+    <Package InstallerVersion="500" Compressed="yes" InstallPrivileges="limited" Platform="x64"
              Description="Instala a politica do Chrome/Edge pra puxar a extensao RAtende Connector automaticamente." />
 
     <MajorUpgrade DowngradeErrorMessage="Ja existe uma versao mais nova do RAtende Connector instalada." />
@@ -29,22 +30,22 @@
     <Property Id="UPDATEURL" Value="https://storage.googleapis.com/rangel-tech-ratende-connector/update_manifest.xml" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
+      <Directory Id="LocalAppDataFolder">
         <Directory Id="INSTALLFOLDER" Name="RAtende Connector" />
       </Directory>
     </Directory>
 
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="ChromePolicy" Guid="1c9a1f0e-6b3e-4e1c-9c1a-7b8e2f3a4d51">
-        <RegistryValue Root="HKLM"
+      <Component Id="ChromePolicy" Guid="1c9a1f0e-6b3e-4e1c-9c1a-7b8e2f3a4d51" Win64="yes">
+        <RegistryValue Root="HKCU"
                         Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
                         Name="1"
                         Type="string"
                         Value="[EXTID];[UPDATEURL]"
                         KeyPath="yes" />
       </Component>
-      <Component Id="EdgePolicy" Guid="2d8b2a1f-7c4f-4f2d-8d2b-8c9f3a4b5e62">
-        <RegistryValue Root="HKLM"
+      <Component Id="EdgePolicy" Guid="2d8b2a1f-7c4f-4f2d-8d2b-8c9f3a4b5e62" Win64="yes">
+        <RegistryValue Root="HKCU"
                         Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
                         Name="1"
                         Type="string"
