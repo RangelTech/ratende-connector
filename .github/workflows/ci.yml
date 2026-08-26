@@ -137,17 +137,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Instala NSIS (runner Windows ja roda como admin, sem essa trava do dev local)
-        run: choco install nsis -y --no-progress
-      - name: Compila o instalador .exe
+      - name: Instala NSIS e WiX (runner Windows ja roda como admin, sem essa trava do dev local)
+        run: |
+          choco install nsis -y --no-progress
+          choco install wixtoolset -y --no-progress
+      - name: Compila o instalador .exe (NSIS -- wizard, auto-eleva UAC)
         shell: pwsh
         working-directory: installers
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" ratende-connector.nsi
+      - name: Compila o instalador .msi (WiX -- formato corporativo, msiexec cuida da elevacao sozinho)
+        shell: pwsh
+        working-directory: installers
+        run: |
+          $version = (node -p "require('../package.json').version") -replace '-.*',''
+          $candle = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\candle.exe" | Select-Object -First 1
+          $light = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" | Select-Object -First 1
+          & $candle.FullName -dProductVersion=$version ratende-connector.wxs
+          & $light.FullName -out RAtende-Connector-Instalador.msi ratende-connector.wixobj
       - uses: actions/upload-artifact@v4
         with:
           name: ratende-connector-windows-installer
-          path: installers/RAtende-Connector-Instalador.exe
+          path: |
+            installers/RAtende-Connector-Instalador.exe
+            installers/RAtende-Connector-Instalador.msi
           retention-days: 7
 
   publish-download:
@@ -196,4 +209,7 @@ jobs:
             --cache-control="no-cache, max-age=0"
           gcloud storage cp RAtende-Connector-Instalador.exe \
             gs://rangel-tech-ratende-connector/RAtende-Connector-Instalador.exe \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp RAtende-Connector-Instalador.msi \
+            gs://rangel-tech-ratende-connector/RAtende-Connector-Instalador.msi \
             --cache-control="no-cache, max-age=0"

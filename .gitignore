@@ -7,3 +7,5 @@ tsconfig.tsbuildinfo
 *.deb
 dist_upload/
 *.exe
+*.msi
+*.wixobj

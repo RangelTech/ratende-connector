@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RAtende Connector -- instalador MSI (WiX v3), 26/08/2026.
+
+  Mesmo mecanismo do .exe (NSIS) e do .bat: escreve a politica
+  ExtensionInstallForcelist do Chrome/Edge apontando pro update manifest
+  hospedado -- MSI faz isso nativo via <RegistryKey>, sem precisar de
+  Custom Action nem RequestExecutionLevel (msiexec ja pede elevacao
+  sozinho pra instalacao per-machine).
+
+  UpgradeCode fixo -- NUNCA trocar, e o que garante que uma versao nova
+  do MSI reconhece e substitui a anterior em vez de instalar duplicado.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="RAtende Connector"
+           Language="1046"
+           Version="$(var.ProductVersion)"
+           Manufacturer="Rangel Tech"
+           UpgradeCode="b0679204-8fce-46b1-999b-e7701c41bc02">
+
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+             Description="Instala a politica do Chrome/Edge pra puxar a extensao RAtende Connector automaticamente." />
+
+    <MajorUpgrade DowngradeErrorMessage="Ja existe uma versao mais nova do RAtende Connector instalada." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="EXTID" Value="ndamceimnbinifibkmegcfhidgjamiaf" />
+    <Property Id="UPDATEURL" Value="https://storage.googleapis.com/rangel-tech-ratende-connector/update_manifest.xml" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="RAtende Connector" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ChromePolicy" Guid="1c9a1f0e-6b3e-4e1c-9c1a-7b8e2f3a4d51">
+        <RegistryValue Root="HKLM"
+                        Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
+                        Name="1"
+                        Type="string"
+                        Value="[EXTID];[UPDATEURL]"
+                        KeyPath="yes" />
+      </Component>
+      <Component Id="EdgePolicy" Guid="2d8b2a1f-7c4f-4f2d-8d2b-8c9f3a4b5e62">
+        <RegistryValue Root="HKLM"
+                        Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
+                        Name="1"
+                        Type="string"
+                        Value="[EXTID];[UPDATEURL]"
+                        KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainFeature" Title="RAtende Connector" Level="1">
+      <ComponentRef Id="ChromePolicy" />
+      <ComponentRef Id="EdgePolicy" />
+    </Feature>
+  </Product>
+</Wix>
