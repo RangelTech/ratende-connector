@@ -103,6 +103,7 @@ async function trocarCodigoPorToken(
   code: string,
   codeVerifier: string,
   redirectUri: string,
+  state: string,
 ): Promise<unknown> {
   const resp = await fetch(provider.tokenUrl, {
     method: 'POST',
@@ -110,6 +111,14 @@ async function trocarCodigoPorToken(
     body: JSON.stringify({
       grant_type: 'authorization_code',
       code,
+      // 26/08/2026, achado ao vivo: sem `state` no corpo, a Anthropic
+      // devolve 400 "Invalid request format" -- nao e' opcional pra ela
+      // (mesmo state que ja foi validado contra CSRF antes de chegar
+      // aqui). Confirmado no payload real do 9Router
+      // (src/lib/oauth/services/claude.js), que manda esse campo. Extra
+      // no Codex nao deve quebrar (servidores OAuth ignoram campo nao
+      // reconhecido), mantido generico pros dois providers.
+      state,
       redirect_uri: redirectUri,
       client_id: provider.clientId,
       code_verifier: codeVerifier,
@@ -162,7 +171,7 @@ async function concluirOAuthSemTrava(providerId: OAuthProviderId, code: string, 
 
   const chaveResultado = `ratende_connector_oauth_resultado_${providerId}`
   try {
-    const tokens = await trocarCodigoPorToken(provider, code, pendente.codeVerifier, pendente.redirectUri)
+    const tokens = await trocarCodigoPorToken(provider, code, pendente.codeVerifier, pendente.redirectUri, state)
     await log('oauth concluido com sucesso', { provider: providerId })
 
     const idTokenClaims =
