@@ -77,7 +77,7 @@ async function tentarLerNomeUmaVez(providerId: ProviderId, tabId: number): Promi
       target: { tabId },
       func: () => {
         const href = document.querySelector('[data-e2e="nav-profile"]')?.getAttribute('href')
-        return href?.startsWith('/@') ? href.slice(2) : null
+        return href?.startsWith('/@') ? href.slice(2).split('?')[0] : null
       },
     })
     return (result as string | null) ?? null
