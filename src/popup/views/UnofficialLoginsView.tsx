@@ -77,6 +77,7 @@ export function UnofficialLoginsView({
 
   async function pausarNoAviso(id: string) {
     await pausarExtensao(id)
+    log('extensao bloqueadora pausada', { id })
     setAvisoBloqueio((atual) => {
       if (!atual) return atual
       const restantes = atual.bloqueadores.filter((b) => b.id !== id)
@@ -100,7 +101,9 @@ export function UnofficialLoginsView({
       {avisoBloqueio && (
         <div style={{ background: 'var(--danger-soft, #fee2e2)', margin: 8, borderRadius: 8, padding: 8 }}>
           <p style={{ fontSize: 11, color: 'var(--danger)', margin: '0 0 6px', fontWeight: 600 }}>
-            Detectamos extensão de VPN/bloqueio ativa -- pode apagar o cookie de sessão. Pause antes de continuar:
+            Essas extensões estão impedindo o login com esse provedor (elas apagam o cookie de sessão do
+            Instagram/Facebook/etc antes de conseguirmos ler). Desative temporariamente pra funcionar --
+            depois que capturar o login, pode ativar de novo:
           </p>
           {avisoBloqueio.bloqueadores.map((b) => (
             <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginTop: 2 }}>
@@ -286,6 +289,7 @@ function CapturaModal({
 
   async function pausar(id: string) {
     await pausarExtensao(id)
+    log('extensao bloqueadora pausada', { id })
     setBloqueadores((atuais) => atuais.filter((b) => b.id !== id))
   }
 
@@ -369,7 +373,8 @@ function CapturaModal({
         {bloqueadores.length > 0 && (
           <div style={{ background: 'var(--danger-soft, #fee2e2)', borderRadius: 8, padding: 8, marginBottom: 10 }}>
             <p style={{ fontSize: 11, color: 'var(--danger)', margin: '0 0 6px', fontWeight: 600 }}>
-              Detectamos extensão de VPN/bloqueio ativa -- pode apagar o cookie de sessão antes de detectar:
+              Essas extensões estão impedindo o login com esse provedor (elas apagam o cookie de sessão antes de
+              conseguirmos ler). Desative temporariamente -- depois que capturar o login, pode ativar de novo:
             </p>
             {bloqueadores.map((b) => (
               <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginTop: 2 }}>
