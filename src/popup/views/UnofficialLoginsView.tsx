@@ -7,6 +7,14 @@ import { log } from '../../lib/logger'
 import { detectarBloqueadores, pausarExtensao, type ExtensaoSuspeita } from '../../lib/blockerDetection'
 import { IconCheck, IconChevronDown, IconPlus, IconX } from '../icons'
 
+// 26/08/2026, feedback do dono: clicar "+" DE DENTRO da propria aba de
+// status fazia ela mandar "abrir_status_tab" pra si mesma -- recarregava
+// a pagina embaixo do usuario no meio do clique ("quebrando a
+// visualizacao", parecia tentar abrir de novo em loop). Se esta pagina JA
+// foi aberta como aba de status (tem ?flow= na URL), nao manda essa
+// mensagem de novo -- so dispara a captura e atualiza o estado local.
+const SOU_A_ABA_DE_STATUS = new URLSearchParams(window.location.search).get('flow') !== null
+
 /* produto-15 -- 26/08/2026, 2a rodada (pedido do dono): lista estilo Okta
    (linha por provider, contador de contas, expandir mostra cada conta com
    opção de remover) + captura agora salva sozinha no backend assim que
@@ -69,9 +77,22 @@ export function UnofficialLoginsView({
 
   function prosseguir(flow: 'cookie' | 'oauth', provider: string) {
     setAvisoBloqueio(null)
-    // O background orquestra tudo (abre/foca a aba de status sem roubar
-    // foco, depois inicia a captura de verdade -- que abre a aba de login
-    // e fica em primeiro plano) -- ver src/background/statusTab.ts.
+    if (SOU_A_ABA_DE_STATUS) {
+      // Ja estamos na aba certa -- so dispara a captura de verdade
+      // diretamente, sem pedir pro background reabrir/recarregar ESTA
+      // mesma aba (isso derrubaria a tela no meio do clique).
+      chrome.runtime.sendMessage({
+        type: flow === 'cookie' ? 'iniciar_captura_cookie_request' : 'iniciar_oauth_request',
+        provider,
+      })
+      if (flow === 'cookie') setProviderAberto(PROVIDERS.find((p) => p.id === provider) ?? null)
+      else setOauthAberto(provider as OAuthProviderId)
+      return
+    }
+    // Popup pequeno: o background orquestra tudo (abre/foca a aba de
+    // status sem roubar foco, depois inicia a captura de verdade -- que
+    // abre a aba de login e fica em primeiro plano) -- ver
+    // src/background/statusTab.ts.
     chrome.runtime.sendMessage({ type: 'abrir_status_tab', flow, provider })
   }
 
@@ -134,6 +155,25 @@ export function UnofficialLoginsView({
         </div>
       )}
 
+      {providerAberto && (
+        <CapturaModal
+          provider={providerAberto}
+          onFechar={() => {
+            setProviderAberto(null)
+            recarregar()
+          }}
+        />
+      )}
+      {oauthAberto && (
+        <CapturaOAuthModal
+          providerId={oauthAberto}
+          onFechar={() => {
+            setOauthAberto(null)
+            recarregar()
+          }}
+        />
+      )}
+
       {carregando ? (
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Carregando…</p>
       ) : (
@@ -169,26 +209,6 @@ export function UnofficialLoginsView({
             ))}
           </div>
         </>
-      )}
-
-      {providerAberto && (
-        <CapturaModal
-          provider={providerAberto}
-          onFechar={() => {
-            setProviderAberto(null)
-            recarregar()
-          }}
-        />
-      )}
-
-      {oauthAberto && (
-        <CapturaOAuthModal
-          providerId={oauthAberto}
-          onFechar={() => {
-            setOauthAberto(null)
-            recarregar()
-          }}
-        />
       )}
     </div>
   )
@@ -433,19 +453,12 @@ function StatusOverlay({
   textoSalvo: string
   onFechar: () => void
 }) {
+  // 26/08/2026, feedback do dono: overlay fixed cobrindo a tela inteira
+  // ficava um vazio gigante quando esta view abre como aba de verdade (não
+  // é mais um popupzinho de 480px) -- virou card normal no fluxo, não modal.
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.42)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <div style={{ background: 'var(--surface-elevated)', borderRadius: 'var(--radius-dialog)', padding: 22, width: 260, boxShadow: 'var(--shadow-soft)' }}>
-        <h2 style={{ fontSize: 14, margin: '0 0 10px', color: 'var(--text)', fontWeight: 700 }}>{titulo}</h2>
+    <div style={{ background: 'var(--surface-elevated)', borderRadius: 'var(--radius-card)', padding: 18, boxShadow: 'var(--shadow-soft)', border: '1px solid var(--border)', marginBottom: 16 }}>
+      <h2 style={{ fontSize: 13.5, margin: '0 0 10px', color: 'var(--text)', fontWeight: 700 }}>{titulo}</h2>
 
         {estado === 'aguardando' && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -495,7 +508,6 @@ function StatusOverlay({
             </button>
           </>
         )}
-      </div>
       <style>{'@keyframes ratende-spin { to { transform: rotate(360deg); } }'}</style>
     </div>
   )
