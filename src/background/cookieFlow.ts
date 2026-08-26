@@ -170,9 +170,16 @@ async function conferirAgoraSemTrava(providerId: ProviderId): Promise<void> {
   if (!encontrados) return
 
   const pendente = await lerPendente()
-  const detectados = cookies
-    .filter((c) => provider.cookieDeSessao.includes(c.name))
-    .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
+  // 26/08/2026, achado real (lab-02 Parte A): salvar só os cookies de
+  // `cookieDeSessao` (o minimo pra DETECTAR login) nao e' suficiente pra
+  // USAR a sessao depois -- Channel::InstagramUnofficial precisa tambem
+  // de `csrftoken` (header X-CSRFToken em toda chamada,
+  // instagram_client.rb) e o Facebook Unofficial roda a sessao inteira
+  // dentro de um navegador de verdade (Playwright), que precisa do jar
+  // completo pra nao cair em re-autenticacao. `cookieDeSessao` continua
+  // servindo só pra decidir SE o login aconteceu; o que é salvo agora é
+  // o jar inteiro do dominio.
+  const detectados = cookies.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
   // ID externo estavel da conta (cookie que nao muda entre logins) -- usado
   // pra rotular a lista (26/08/2026, pedido do dono: mostrar quem é a
   // conta, nao a data da captura) e pra deduplicar (reconectar a mesma
