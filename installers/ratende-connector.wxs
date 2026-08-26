@@ -43,6 +43,7 @@
                         Type="string"
                         Value="[EXTID];[UPDATEURL]"
                         KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
       </Component>
       <Component Id="EdgePolicy" Guid="2d8b2a1f-7c4f-4f2d-8d2b-8c9f3a4b5e62" Win64="yes">
         <RegistryValue Root="HKCU"
