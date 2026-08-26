@@ -122,7 +122,31 @@ async function trocarCodigoPorToken(
   return resp.json()
 }
 
+// 26/08/2026, achado ao vivo: onCommitted e onHistoryStateUpdated disparam
+// quase juntos pra uma navegacao real (nao SPA) -- os dois chamavam
+// concluirOAuth com o MESMO code, e como lerPendente() e' async, as duas
+// chamadas liam o pendente antes de qualquer uma limpar, disparando 2
+// trocas de token concorrentes com o mesmo authorization code. O Anthropic
+// via isso como uso duplicado/abusivo do code e devolvia 429 -- login
+// direto no site nunca dispara isso (so 1 navegacao, 1 listener). Guarda
+// em memoria (sincrona, sem await entre checar e marcar) evita a corrida,
+// mesmo principio do `emAndamento` em cookieFlow.ts.
+const processandoOAuth = new Set<OAuthProviderId>()
+
 async function concluirOAuth(providerId: OAuthProviderId, code: string, state: string): Promise<void> {
+  if (processandoOAuth.has(providerId)) {
+    await log('oauth callback duplicado ignorado (troca ja em andamento)', { providerId })
+    return
+  }
+  processandoOAuth.add(providerId)
+  try {
+    await concluirOAuthSemTrava(providerId, code, state)
+  } finally {
+    processandoOAuth.delete(providerId)
+  }
+}
+
+async function concluirOAuthSemTrava(providerId: OAuthProviderId, code: string, state: string): Promise<void> {
   const pendente = await lerPendente()
   if (!pendente || pendente.provider !== providerId) {
     await logErro('oauth concluido sem pendente correspondente', { providerId })
