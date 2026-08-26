@@ -6,3 +6,4 @@ tsconfig.tsbuildinfo
 *.crx
 *.deb
 dist_upload/
+*.exe

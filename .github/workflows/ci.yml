@@ -24,9 +24,16 @@ name: CI
 # e o navegador instala a extensao sozinho, sem "Modo desenvolvedor".
 #
 # Sem certificado de assinatura de codigo (Authenticode) pago ainda -- o
-# .bat do Windows fica sem assinatura, o Windows Defender/SmartScreen
+# .exe do Windows fica sem assinatura, o Windows Defender/SmartScreen
 # pode alertar na primeira execucao ate isso ser resolvido (decisao do
 # dono, precisa comprar de uma CA).
+#
+# Instalador Windows via NSIS de verdade (nao so um .bat cru): o job
+# `build-windows-installer` roda em `windows-latest` especificamente
+# porque o runner do GitHub tem `choco`/admin de fabrica -- nao dava pra
+# instalar NSIS localmente no ambiente de dev (sem permissao de
+# administrador nesse sandbox). `.bat` continua publicado tambem, como
+# fallback mais simples.
 
 on:
   push:
@@ -125,9 +132,27 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  build-windows-installer:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instala NSIS (runner Windows ja roda como admin, sem essa trava do dev local)
+        run: choco install nsis -y --no-progress
+      - name: Compila o instalador .exe
+        shell: pwsh
+        working-directory: installers
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" ratende-connector.nsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ratende-connector-windows-installer
+          path: installers/RAtende-Connector-Instalador.exe
+          retention-days: 7
+
   publish-download:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [build]
+    needs: [build, build-windows-installer]
     concurrency:
       group: ratende-connector-download-publish
       cancel-in-progress: true
@@ -139,6 +164,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ratende-connector-build
+      - uses: actions/download-artifact@v4
+        with:
+          name: ratende-connector-windows-installer
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -165,4 +193,7 @@ jobs:
             --cache-control="no-cache, max-age=0"
           gcloud storage cp installers/Desinstalar-RAtende-Connector.bat \
             gs://rangel-tech-ratende-connector/Desinstalar-RAtende-Connector.bat \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp RAtende-Connector-Instalador.exe \
+            gs://rangel-tech-ratende-connector/RAtende-Connector-Instalador.exe \
             --cache-control="no-cache, max-age=0"
