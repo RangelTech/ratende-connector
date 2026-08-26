@@ -64,17 +64,17 @@ export const OAUTH_PROVIDERS: OAuthProvider[] = [
     authorizeUrl: 'https://claude.ai/oauth/authorize',
     // 26/08/2026: pagina de CALLBACK (onde o usuario ve o codigo depois
     // de consentir) e' platform.claude.com de verdade, confirmado ao
-    // vivo. Mas o endpoint de TOKEN e' outro host -- tentativa anterior
-    // assumiu que tinha virado platform.claude.com tambem (mesmo
-    // rebrand), e isso deu 429 "rate_limit_error" (formato de erro da
-    // API normal da Anthropic, nao de erro OAuth tipo invalid_grant --
-    // sinal de que a chamada estava caindo no rate-limiter generico de
-    // /v1/*, nao num endpoint de token de verdade). Confirmado via
-    // pesquisa (2 fontes independentes, projetos que fazem esse OAuth
-    // ha mais tempo): o endpoint de token continua em
-    // console.anthropic.com, nunca migrou -- so a pagina de callback
-    // mudou de host.
-    tokenUrl: 'https://console.anthropic.com/v1/oauth/token',
+    // vivo. O endpoint de TOKEN e' outro host -- 2 tentativas erradas
+    // antes desta (platform.claude.com, depois console.anthropic.com,
+    // baseadas em pesquisa de terceiros) deram 429 "rate_limit_error"
+    // (formato de erro da API normal da Anthropic, nao invalid_grant de
+    // OAuth -- sinal de estar caindo no rate-limiter generico de /v1/*,
+    // nao num endpoint de token de verdade). Valor certo confirmado
+    // lendo o codigo-fonte real do 9Router (open-sse/providers/registry/
+    // claude.js), que o dono confirma que capturava credencial Claude
+    // de verdade em producao -- mesmo client_id/scopes que ja tinhamos,
+    // so o tokenUrl que estava errado.
+    tokenUrl: 'https://api.anthropic.com/v1/oauth/token',
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
     redirectUri: 'https://platform.claude.com/oauth/code/callback',
     scope: 'org:create_api_key user:profile user:inference',
