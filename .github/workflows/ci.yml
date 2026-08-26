@@ -150,10 +150,12 @@ jobs:
         shell: pwsh
         working-directory: installers
         run: |
-          $version = (node -p "require('../package.json').version") -replace '-.*',''
+          $version = (Get-Content ../package.json | ConvertFrom-Json).version -replace '-.*', ''
+          Write-Host "Versao lida do package.json: $version"
           $candle = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\candle.exe" | Select-Object -First 1
           $light = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin\light.exe" | Select-Object -First 1
-          & $candle.FullName -dProductVersion=$version ratende-connector.wxs
+          $versionDefine = "-dProductVersion=$version"
+          & $candle.FullName $versionDefine ratende-connector.wxs
           & $light.FullName -out RAtende-Connector-Instalador.msi ratende-connector.wixobj
       - uses: actions/upload-artifact@v4
         with:
