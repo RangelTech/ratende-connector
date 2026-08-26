@@ -35,16 +35,27 @@ export default defineManifest({
   // webNavigation: unica forma de capturar o redirect OAuth do Codex
   // (localhost:1455/1457) sem subir servidor/app local -- ver
   // src/background/oauthFlow.ts.
-  // management: 26/08/2026, achado em teste ao vivo -- VPN/ad-block
-  // (Windscribe, no caso do dono) apaga o cookie de sessao do Instagram/
-  // Facebook antes da captura conseguir ler. So da pra detectar+oferecer
-  // pausar (1 clique do usuario, nunca automatico) com essa permissao --
-  // ver src/lib/blockerDetection.ts.
+  // management: 26/08/2026 -- deteccao de VPN/ad-block que pode interferir
+  // (ver src/lib/blockerDetection.ts). NAO era a causa raiz do bug real
+  // (ver nota abaixo sobre host_permissions), mas vale manter como
+  // seguranca extra -- so avisa, nunca desativa nada sozinha.
   permissions: ['cookies', 'storage', 'tabs', 'webNavigation', 'management'],
+  // 26/08/2026, causa raiz real (confirmada lendo o banco de cookies do
+  // Chrome direto do disco -- sessionid/c_user/xs SEMPRE existiram, o
+  // Windscribe nunca foi o problema): o cookie de sessao do Instagram/
+  // Facebook e' salvo com dominio ".instagram.com"/".facebook.com" (sem
+  // www, valido pra todos os subdominios) -- mas a permissao so cobria
+  // "www.instagram.com". O Chrome checa a permissao da extensao contra o
+  // dominio EXATO do cookie pra liberar chrome.cookies, entao "www."
+  // sozinho nunca da acesso ao cookie do dominio base. Precisa dos dois
+  // padroes (base + wildcard) pra cobrir cookie de qualquer subdominio.
   host_permissions: [
-    'https://www.instagram.com/*',
-    'https://www.facebook.com/*',
-    'https://www.tiktok.com/*',
+    'https://instagram.com/*',
+    'https://*.instagram.com/*',
+    'https://facebook.com/*',
+    'https://*.facebook.com/*',
+    'https://tiktok.com/*',
+    'https://*.tiktok.com/*',
     // TODO: trocar pelo dominio real do agent-platform quando for buildar
     // pra homolog/producao (dev usa localhost via vite).
     'https://ia.rangeltech.net/*',
