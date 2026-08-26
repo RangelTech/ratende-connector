@@ -99,10 +99,13 @@ function esperar(ms: number): Promise<void> {
 //
 // Achado real: quando o provider ja estava logado, a checagem de cookie
 // disparava ANTES da pagina (SPA) terminar de renderizar esse texto --
-// tentativa unica voltava vazia. Tenta algumas vezes com espera curta em
-// vez de desistir na primeira.
+// tentativa unica voltava vazia. Tenta varias vezes com espera curta em
+// vez de desistir cedo -- TikTok em particular demorou mais de 5 tentativas
+// (~7s) num teste ao vivo, entao 12x800ms (~10s) da mais margem. Roda tudo
+// em background depois que o cookie ja foi salvo, entao esperar mais nao
+// atrasa nada visivel pro usuario.
 async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promise<string | null> {
-  for (let tentativa = 0; tentativa < 5; tentativa++) {
+  for (let tentativa = 0; tentativa < 12; tentativa++) {
     try {
       const nome = await tentarLerNomeUmaVez(providerId, tabId)
       if (nome) return nome
@@ -112,7 +115,7 @@ async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promi
       await logErro('extrairNomeDaPagina falhou (nao bloqueia a captura)', { provider: providerId, err })
       return null
     }
-    await esperar(700)
+    await esperar(800)
   }
   return null
 }
