@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { PROVIDERS, PROVIDERS_EM_BREVE, type ProviderId, type UnofficialProvider } from '../../lib/providers'
 import { criarConexao, listarConexoes, type UnofficialConnection, type CookieBundle } from '../../lib/api'
 import type { SessaoExtensao } from '../../lib/storage'
+import { log, logErro } from '../../lib/logger'
 
 /* produto-15 secao 5 -- fluxo de captura. Popup precisa continuar aberto
    durante o polling (limitacao de v1 aceitavel pra POC -- monitorar com o
@@ -142,20 +143,32 @@ function CapturaModal({
   const [erro, setErro] = useState('')
 
   useEffect(() => {
+    log('captura iniciada', { provider: provider.id, cookieDomain: provider.cookieDomain })
     chrome.tabs.create({ url: provider.loginUrl })
 
+    let tentativas = 0
     const intervalo = window.setInterval(async () => {
+      tentativas += 1
       const cookies = await chrome.cookies.getAll({ domain: provider.cookieDomain })
       const encontrados = provider.cookieDeSessao.every((nome) =>
         cookies.some((c) => c.name === nome),
       )
+      // Loga só a cada 10 tentativas (20s) pra não inundar o ring buffer
+      // enquanto o usuário demora pra fazer login.
+      if (tentativas % 10 === 0) {
+        log('aguardando cookies de sessao', {
+          provider: provider.id,
+          tentativas,
+          cookiesPresentes: cookies.map((c) => c.name),
+        })
+      }
       if (encontrados) {
         window.clearInterval(intervalo)
-        setCookiesDetectados(
-          cookies
-            .filter((c) => provider.cookieDeSessao.includes(c.name))
-            .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })),
-        )
+        const detectados = cookies
+          .filter((c) => provider.cookieDeSessao.includes(c.name))
+          .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
+        log('sessao detectada', { provider: provider.id, cookies: detectados.map((c) => c.name) })
+        setCookiesDetectados(detectados)
         setEstado('sessao_detectada')
       }
     }, 2000)
@@ -173,8 +186,10 @@ function CapturaModal({
         label: `${provider.nome} principal`,
         cookies: cookiesDetectados,
       })
+      log('conexao criada com sucesso', { provider: provider.id })
       onConectado()
     } catch (err) {
+      await logErro('falha ao criar conexao', err)
       setErro(err instanceof Error ? err.message : 'Falha ao conectar')
       setEstado('erro')
     }

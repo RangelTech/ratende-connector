@@ -2,6 +2,8 @@
 // de qualquer client externo autenticado (token normal de sessao) -- nao
 // tem endpoint especial so pra extensao.
 
+import { log, logErro } from './logger'
+
 // Vite troca `import.meta.env.PROD` em tempo de build (nao runtime) --
 // dev server usa o backend local, `vite build` (o que vira o zip
 // distribuido, ver produto-15 secao 9) usa o dominio real.
@@ -22,7 +24,13 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const resp = await fetch(`${BACKEND_URL}${path}`, { ...options, headers })
+  let resp: Response
+  try {
+    resp = await fetch(`${BACKEND_URL}${path}`, { ...options, headers })
+  } catch (err) {
+    await logErro(`fetch falhou: ${options.method ?? 'GET'} ${path}`, err)
+    throw err
+  }
   if (!resp.ok) {
     let detail = resp.statusText
     try {
@@ -31,8 +39,10 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     } catch {
       // corpo nao-JSON, mantem statusText
     }
+    await logErro(`${options.method ?? 'GET'} ${path} -> ${resp.status}`, detail)
     throw new ApiError(resp.status, detail)
   }
+  await log(`${options.method ?? 'GET'} ${path} -> ${resp.status}`)
   if (resp.status === 204) return undefined as T
   return (await resp.json()) as T
 }

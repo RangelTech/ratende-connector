@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import { login, ApiError } from '../../lib/api'
 import { salvarSessao, type SessaoExtensao } from '../../lib/storage'
+import { log } from '../../lib/logger'
 
 /* produto-15 secao 7e -- login direto no RAgentes, sem pairing token
    (decisao do dono 25/08: a extensao ja sabe quem eh o usuario, nao
@@ -24,6 +25,7 @@ export function LoginView({ onEntrar }: { onEntrar: (s: SessaoExtensao) => void 
         tenantName: '',
       }
       await salvarSessao(sessao)
+      log('login concluido', { email })
       onEntrar(sessao)
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Falha ao entrar')

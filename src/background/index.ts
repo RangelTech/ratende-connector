@@ -7,12 +7,19 @@
 // (ia.rangeltech.net/chat.rangeltech.net) com um ping, provando que o canal
 // existe e esta restrito aos dominios certos -- nenhuma acao real ainda.
 
-chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+import { log } from '../lib/logger'
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   if (message?.type === 'ping') {
+    log('ping externo recebido', { origem: sender.origin })
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version })
     return true
   }
   return false
+})
+
+chrome.runtime.onInstalled.addListener((details) => {
+  log('extensao instalada/atualizada', { reason: details.reason, versao: chrome.runtime.getManifest().version })
 })
 
 export {}

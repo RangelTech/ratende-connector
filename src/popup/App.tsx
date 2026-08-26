@@ -5,8 +5,9 @@ import { LoginView } from './views/LoginView'
 import { MenuView } from './views/MenuView'
 import { UnofficialLoginsView } from './views/UnofficialLoginsView'
 import { SettingsView } from './views/SettingsView'
+import { LogsView } from './views/LogsView'
 
-type Tela = 'menu' | 'nao-oficiais' | 'config'
+type Tela = 'menu' | 'nao-oficiais' | 'config' | 'logs'
 
 export function App() {
   const [carregando, setCarregando] = useState(true)
@@ -36,7 +37,10 @@ export function App() {
     return <UnofficialLoginsView sessao={sessao} onVoltar={() => setTela('menu')} />
   }
   if (tela === 'config') {
-    return <SettingsView onVoltar={() => setTela('menu')} onSair={sair} />
+    return <SettingsView onVoltar={() => setTela('menu')} onSair={sair} onAbrirLogs={() => setTela('logs')} />
+  }
+  if (tela === 'logs') {
+    return <LogsView onVoltar={() => setTela('config')} />
   }
   return (
     <MenuView
