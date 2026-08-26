@@ -7,7 +7,7 @@
 // e a suspensao do service worker.
 
 import { findProvider, type ProviderId } from '../lib/providers'
-import { log } from '../lib/logger'
+import { log, logErro } from '../lib/logger'
 
 interface PendenteCookie {
   provider: ProviderId
@@ -31,8 +31,24 @@ async function limparPendente(): Promise<void> {
 async function conferirAgora(providerId: ProviderId): Promise<void> {
   const provider = findProvider(providerId)
   if (!provider) return
-  const cookies = await chrome.cookies.getAll({ domain: provider.cookieDomain })
+  let cookies: chrome.cookies.Cookie[]
+  try {
+    cookies = await chrome.cookies.getAll({ domain: provider.cookieDomain })
+  } catch (err) {
+    await logErro('chrome.cookies.getAll falhou', { provider: providerId, err })
+    return
+  }
   const encontrados = provider.cookieDeSessao.every((nome) => cookies.some((c) => c.name === nome))
+  // Loga toda tentativa, nao só sucesso -- senão silêncio vira "não sei se
+  // rodou" quando algo não bate (achado real 26/08/2026: primeiro teste do
+  // dono não achou cookie nenhum e não tinha como saber por quê).
+  await log('conferindo cookies', {
+    provider: providerId,
+    dominioFiltro: provider.cookieDomain,
+    esperados: provider.cookieDeSessao,
+    achados: cookies.map((c) => `${c.name}@${c.domain}`),
+    encontrados,
+  })
   if (!encontrados) return
 
   const detectados = cookies
@@ -68,6 +84,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'iniciar_captura_cookie_request') return false
   iniciarCapturaCookie(message.provider)
     .then(() => sendResponse({ ok: true }))
-    .catch((err) => sendResponse({ ok: false, erro: err instanceof Error ? err.message : 'falha' }))
+    .catch(async (err) => {
+      await logErro('iniciarCapturaCookie falhou', err)
+      sendResponse({ ok: false, erro: err instanceof Error ? err.message : 'falha' })
+    })
   return true
 })
