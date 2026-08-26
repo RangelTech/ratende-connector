@@ -130,6 +130,8 @@ jobs:
             installers/Instalar-RAtende-Connector.bat
             installers/Desinstalar-RAtende-Connector.bat
             installers/instalar-ratende-connector.sh
+            installers/instalar-ratende-connector-mac.sh
+            installers/desinstalar-ratende-connector-mac.sh
           retention-days: 7
           if-no-files-found: warn
 
@@ -212,6 +214,12 @@ jobs:
             --cache-control="no-cache, max-age=0"
           gcloud storage cp installers/instalar-ratende-connector.sh \
             gs://rangel-tech-ratende-connector/instalar-ratende-connector.sh \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp installers/instalar-ratende-connector-mac.sh \
+            gs://rangel-tech-ratende-connector/instalar-ratende-connector-mac.sh \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp installers/desinstalar-ratende-connector-mac.sh \
+            gs://rangel-tech-ratende-connector/desinstalar-ratende-connector-mac.sh \
             --cache-control="no-cache, max-age=0"
           gcloud storage cp RAtende-Connector-Instalador.exe \
             gs://rangel-tech-ratende-connector/RAtende-Connector-Instalador.exe \
