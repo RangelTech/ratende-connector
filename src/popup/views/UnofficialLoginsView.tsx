@@ -4,6 +4,7 @@ import { OAUTH_PROVIDERS, findOAuthProvider, type OAuthProviderId } from '../../
 import { criarConexao, criarConexaoOAuth, listarConexoes, type UnofficialConnection, type CookieBundle } from '../../lib/api'
 import type { SessaoExtensao } from '../../lib/storage'
 import { log, logErro } from '../../lib/logger'
+import { detectarBloqueadores, pausarExtensao, type ExtensaoSuspeita } from '../../lib/blockerDetection'
 
 /* produto-15 secao 5 -- fluxo de captura. Popup precisa continuar aberto
    durante o polling (limitacao de v1 aceitavel pra POC -- monitorar com o
@@ -192,6 +193,20 @@ function CapturaModal({
   const [estado, setEstado] = useState<EstadoCaptura>('aguardando_login')
   const [cookiesDetectados, setCookiesDetectados] = useState<CookieBundle[] | null>(null)
   const [erro, setErro] = useState('')
+  const [bloqueadores, setBloqueadores] = useState<ExtensaoSuspeita[]>([])
+
+  /* 26/08/2026 -- achado em teste ao vivo (Windscribe apagando o cookie de
+     sessão do Instagram/Facebook antes da captura ler, TikTok não afetado):
+     avisa se tiver VPN/ad-block/anti-tracker ativo que pode fazer o mesmo.
+     Nunca desativa sozinho -- só avisa, usuário decide se pausa. */
+  useEffect(() => {
+    detectarBloqueadores().then(setBloqueadores)
+  }, [])
+
+  async function pausar(id: string) {
+    await pausarExtensao(id)
+    setBloqueadores((atuais) => atuais.filter((b) => b.id !== id))
+  }
 
   /* 26/08/2026 -- achado em teste ao vivo: o popup do Chrome fecha sozinho
      assim que a aba de login abre e perde o foco, matando qualquer estado
@@ -269,6 +284,25 @@ function CapturaModal({
     >
       <div style={{ background: 'var(--surface-solid)', borderRadius: 12, padding: 16, width: 280 }}>
         <h2 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--text)' }}>Conectar {provider.nome}</h2>
+
+        {bloqueadores.length > 0 && (
+          <div style={{ background: 'var(--danger-soft, #fee2e2)', borderRadius: 8, padding: 8, marginBottom: 10 }}>
+            <p style={{ fontSize: 11, color: 'var(--danger)', margin: '0 0 6px', fontWeight: 600 }}>
+              Detectamos extensão de VPN/bloqueio ativa -- pode apagar o cookie de sessão antes de detectar:
+            </p>
+            {bloqueadores.map((b) => (
+              <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 11, color: 'var(--text)' }}>{b.nome}</span>
+                <button
+                  onClick={() => pausar(b.id)}
+                  style={{ fontSize: 10, background: 'var(--danger)', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 6px' }}
+                >
+                  Pausar agora
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {estado === 'aguardando_login' && (
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
