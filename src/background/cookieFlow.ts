@@ -82,6 +82,7 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
     await log('conexao salva automaticamente', { provider: providerId })
     await chrome.storage.local.set({ [chaveResultado]: { ok: true } })
     if (pendente?.tabId) chrome.tabs.remove(pendente.tabId).catch(() => {})
+    await chrome.storage.session.remove(`ratende_connector_login_tab_${providerId}`)
   } catch (err) {
     await logErro('falha ao salvar conexao automaticamente', err)
     await chrome.storage.local.set({
@@ -90,11 +91,33 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
   }
 }
 
+// 26/08/2026, feedback do dono: cada tentativa abria uma aba nova do
+// provider sem fechar a anterior -- empilhava Instagram/Facebook/TikTok
+// na barra de abas. Reaproveita a mesma aba por provider (guarda o tabId
+// na sessao), igual a aba de status.
+async function abrirOuFocarAbaLogin(providerId: ProviderId, url: string): Promise<number | undefined> {
+  const chave = `ratende_connector_login_tab_${providerId}`
+  const r = await chrome.storage.session.get(chave)
+  const tabId = r[chave] as number | undefined
+  if (tabId) {
+    try {
+      await chrome.tabs.get(tabId)
+      await chrome.tabs.update(tabId, { url, active: true })
+      return tabId
+    } catch {
+      // aba foi fechada pelo usuario -- cai pra criar uma nova abaixo
+    }
+  }
+  const nova = await chrome.tabs.create({ url })
+  await chrome.storage.session.set({ [chave]: nova.id })
+  return nova.id
+}
+
 export async function iniciarCapturaCookie(providerId: ProviderId): Promise<void> {
   const provider = findProvider(providerId)
   if (!provider) throw new Error(`provider desconhecido: ${providerId}`)
-  const tab = await chrome.tabs.create({ url: provider.loginUrl })
-  await salvarPendente({ provider: providerId, tabId: tab.id })
+  const tabId = await abrirOuFocarAbaLogin(providerId, provider.loginUrl)
+  await salvarPendente({ provider: providerId, tabId })
   await log('captura cookie iniciada', { provider: providerId })
   // Confere na hora -- usuario pode ja estar logado (cookie ja existe antes
   // de qualquer onChanged dessa sessao disparar).

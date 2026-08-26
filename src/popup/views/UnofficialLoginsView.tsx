@@ -69,14 +69,9 @@ export function UnofficialLoginsView({
 
   function prosseguir(flow: 'cookie' | 'oauth', provider: string) {
     setAvisoBloqueio(null)
-    // Dispara a captura de verdade no background (abre a aba do provider +
-    // começa a escutar) e, em paralelo, abre/foca a aba de status
-    // reaproveitada que vai mostrar o progresso (ver
-    // src/background/statusTab.ts e cookieFlow.ts/oauthFlow.ts).
-    chrome.runtime.sendMessage({
-      type: flow === 'cookie' ? 'iniciar_captura_cookie_request' : 'iniciar_oauth_request',
-      provider,
-    })
+    // O background orquestra tudo (abre/foca a aba de status sem roubar
+    // foco, depois inicia a captura de verdade -- que abre a aba de login
+    // e fica em primeiro plano) -- ver src/background/statusTab.ts.
     chrome.runtime.sendMessage({ type: 'abrir_status_tab', flow, provider })
   }
 

@@ -59,6 +59,19 @@ export function login(email: string, password: string): Promise<LoginResponse> {
   })
 }
 
+export interface Perfil {
+  id: string
+  email: string
+  name: string
+  is_master: boolean
+  tenant_id: string | null
+  branding: { name: string; tenant_key: string }
+}
+
+export function buscarPerfil(token: string): Promise<Perfil> {
+  return request<Perfil>('/api/auth/me', {}, token)
+}
+
 export interface UnofficialConnection {
   id: string
   tenant_id: string

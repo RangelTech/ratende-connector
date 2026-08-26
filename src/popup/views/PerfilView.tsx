@@ -1,7 +1,15 @@
+import { useEffect, useState } from 'react'
 import type { SessaoExtensao } from '../../lib/storage'
+import { buscarPerfil, type Perfil } from '../../lib/api'
 import { IconUser } from '../icons'
 
 export function PerfilView({ sessao, onSair }: { sessao: SessaoExtensao; onSair: () => void }) {
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
+
+  useEffect(() => {
+    buscarPerfil(sessao.token).then(setPerfil)
+  }, [sessao.token])
+
   return (
     <div style={{ padding: 24 }}>
       <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 16px' }}>
@@ -38,9 +46,11 @@ export function PerfilView({ sessao, onSair }: { sessao: SessaoExtensao; onSair:
         </div>
         <div style={{ minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
-            {sessao.tenantName || 'RAtende'}
+            {perfil?.branding.name || perfil?.name || 'Carregando…'}
           </p>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>Conectado ao RAgentes</p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+            {perfil ? `${perfil.name} · ${perfil.email}` : sessao.tenantName || 'Conectado ao RAgentes'}
+          </p>
         </div>
       </div>
 

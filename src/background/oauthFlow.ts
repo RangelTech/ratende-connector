@@ -32,6 +32,26 @@ async function limparPendente(): Promise<void> {
   await chrome.storage.session.remove(CHAVE_PENDENTE)
 }
 
+// 26/08/2026, feedback do dono: cada tentativa abria uma aba nova de
+// autorizacao sem fechar a anterior. Reaproveita a mesma aba por provider.
+async function abrirOuFocarAbaAutorizacao(providerId: OAuthProviderId, url: string): Promise<number | undefined> {
+  const chave = `ratende_connector_oauth_tab_${providerId}`
+  const r = await chrome.storage.session.get(chave)
+  const tabId = r[chave] as number | undefined
+  if (tabId) {
+    try {
+      await chrome.tabs.get(tabId)
+      await chrome.tabs.update(tabId, { url, active: true })
+      return tabId
+    } catch {
+      // aba foi fechada pelo usuario -- cai pra criar uma nova abaixo
+    }
+  }
+  const nova = await chrome.tabs.create({ url })
+  await chrome.storage.session.set({ [chave]: nova.id })
+  return nova.id
+}
+
 export async function iniciarOAuth(providerId: OAuthProviderId): Promise<void> {
   const provider = findOAuthProvider(providerId)
   if (!provider) throw new Error(`provider oauth desconhecido: ${providerId}`)
@@ -52,8 +72,8 @@ export async function iniciarOAuth(providerId: OAuthProviderId): Promise<void> {
     ...(provider.extraParams ?? {}),
   })
 
-  const tab = await chrome.tabs.create({ url: `${provider.authorizeUrl}?${params.toString()}` })
-  await salvarPendente({ provider: providerId, state, codeVerifier, redirectUri, tabId: tab.id })
+  const tabId = await abrirOuFocarAbaAutorizacao(providerId, `${provider.authorizeUrl}?${params.toString()}`)
+  await salvarPendente({ provider: providerId, state, codeVerifier, redirectUri, tabId })
   await log('oauth iniciado', { provider: providerId })
 }
 
@@ -125,6 +145,7 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
     // 26/08/2026, feedback do dono: deixar a aba de autorizacao em branco
     // (about:blank) parecia bug -- fecha a aba de verdade em vez disso.
     if (pendente.tabId) chrome.tabs.remove(pendente.tabId).catch(() => {})
+    await chrome.storage.session.remove(`ratende_connector_oauth_tab_${providerId}`)
     await limparPendente()
   }
 }
@@ -162,9 +183,42 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   await concluirOAuth('codex_cli', code, state)
 })
 
-// Claude Code: nao usa localhost -- o content script na pagina hospedada da
-// Anthropic (platform.claude.com/oauth/code/callback) manda o codigo por
-// mensagem (ver src/content/claudeOAuthCallback.ts).
+// Claude Code: nao usa localhost. Duas formas de capturar o retorno --
+// 26/08/2026, achado em teste ao vivo: quando o usuario ja tava logado no
+// claude.ai, a autorizacao completou via navegacao client-side (SPA,
+// pushState) em vez de um reload de pagina de verdade -- o content script
+// (que so injeta em navegacao real, ver claudeOAuthCallback.ts) nunca
+// rodou, silenciosamente sumindo com a captura. chrome.webNavigation.
+// onHistoryStateUpdated cobre navegacao SPA tambem, e o code/state ja vem
+// na propria URL (query+hash) -- nao precisa nem ler o texto da pagina.
+function extrairDaUrlCallback(url: string): { code: string; state: string } | null {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return null
+  }
+  if (!u.href.startsWith('https://platform.claude.com/oauth/code/callback')) return null
+  const code = u.searchParams.get('code')
+  const state = u.hash.replace(/^#/, '')
+  if (code && state) return { code, state }
+  return null
+}
+
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0) return
+  const achado = extrairDaUrlCallback(details.url)
+  if (achado) concluirOAuth('claude_code', achado.code, achado.state)
+})
+
+// Cobertura pro caso normal tambem (navegacao de verdade, nao SPA) -- nao
+// depende do content script terminar de carregar a pagina.
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return
+  const achado = extrairDaUrlCallback(details.url)
+  if (achado) concluirOAuth('claude_code', achado.code, achado.state)
+})
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'claude_oauth_code') {
     if (!sender.tab?.url?.startsWith('https://platform.claude.com/oauth/code/callback')) return false
