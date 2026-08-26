@@ -100,12 +100,20 @@ function esperar(ms: number): Promise<void> {
 // Achado real: quando o provider ja estava logado, a checagem de cookie
 // disparava ANTES da pagina (SPA) terminar de renderizar esse texto --
 // tentativa unica voltava vazia. Tenta varias vezes com espera curta em
-// vez de desistir cedo -- TikTok em particular demorou mais de 5 tentativas
-// (~7s) num teste ao vivo, entao 12x800ms (~10s) da mais margem. Roda tudo
-// em background depois que o cookie ja foi salvo, entao esperar mais nao
-// atrasa nada visivel pro usuario.
+// vez de desistir cedo. TikTok e' bem mais lento que os outros dois --
+// segundo o dono, ele passa por uma tela de login que redireciona mesmo
+// autenticado (navegacao dupla), 12x800ms (~10s) ainda nao foi suficiente
+// num teste ao vivo. Orcamento maior so pra ele; Instagram/Facebook ficam
+// como estavam (ja funcionam rapido, nao tem por que esperar mais).
+// Roda tudo em background depois que o cookie ja foi salvo, entao esperar
+// mais nao atrasa nada visivel pro usuario.
+const TENTATIVAS: Partial<Record<ProviderId, number>> = { tiktok_web: 25 }
+const TENTATIVAS_PADRAO = 12
+const INTERVALO_MS = 800
+
 async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promise<string | null> {
-  for (let tentativa = 0; tentativa < 12; tentativa++) {
+  const maxTentativas = TENTATIVAS[providerId] ?? TENTATIVAS_PADRAO
+  for (let tentativa = 0; tentativa < maxTentativas; tentativa++) {
     try {
       const nome = await tentarLerNomeUmaVez(providerId, tabId)
       if (nome) return nome
@@ -115,7 +123,7 @@ async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promi
       await logErro('extrairNomeDaPagina falhou (nao bloqueia a captura)', { provider: providerId, err })
       return null
     }
-    await esperar(800)
+    await esperar(INTERVALO_MS)
   }
   return null
 }
