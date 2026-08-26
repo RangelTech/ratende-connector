@@ -3,3 +3,6 @@ dist/
 *.log
 tsconfig.tsbuildinfo
 *.zip
+*.crx
+*.deb
+dist_upload/

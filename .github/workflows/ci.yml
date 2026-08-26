@@ -13,6 +13,20 @@ name: CI
 # ver rangel-tech-foundation). Variaveis de repo (GCP_PROJECT_ID,
 # GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SERVICE_ACCOUNT) setadas via
 # `gh variable set` no repo `RangelTech/ratende-connector`.
+#
+# 26/08/2026 (pedido do dono): alem do zip pra "carregar sem compactacao",
+# gera um .crx assinado (chave permanente em segredo do repo,
+# RATENDE_CONNECTOR_SIGNING_KEY -- NUNCA rotacionar, o ID da extensao
+# `ndamceimnbinifibkmegcfhidgjamiaf` depende dela pra sempre) + o update
+# manifest que o Chrome consulta pra auto-atualizar, e instaladores que
+# escrevem a politica ExtensionInstallForcelist (Windows via .bat + registro,
+# Linux via .deb real) -- assim o usuario final so roda o instalador uma vez
+# e o navegador instala a extensao sozinho, sem "Modo desenvolvedor".
+#
+# Sem certificado de assinatura de codigo (Authenticode) pago ainda -- o
+# .bat do Windows fica sem assinatura, o Windows Defender/SmartScreen
+# pode alertar na primeira execucao ate isso ser resolvido (decisao do
+# dono, precisa comprar de uma CA).
 
 on:
   push:
@@ -34,11 +48,82 @@ jobs:
       - name: Empacota o zip pronto pra "Carregar sem compactacao" no Chrome
         working-directory: dist
         run: zip -r ../ratende-connector.zip .
+      - name: Empacota o .crx assinado (chave permanente do repo)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          SIGNING_KEY: ${{ secrets.RATENDE_CONNECTOR_SIGNING_KEY }}
+        run: |
+          echo "$SIGNING_KEY" > /tmp/ratende-connector-key.pem
+          which google-chrome || sudo apt-get update && sudo apt-get install -y google-chrome-stable
+          google-chrome --headless --pack-extension="$(pwd)/dist" \
+            --pack-extension-key=/tmp/ratende-connector-key.pem --no-sandbox
+          mv dist.crx ratende-connector.crx
+          rm -f /tmp/ratende-connector-key.pem
+      - name: Gera o update manifest (Chrome consulta pra auto-atualizar)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cat > update_manifest.xml <<EOF
+          <?xml version='1.0' encoding='UTF-8'?>
+          <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+            <app appid='ndamceimnbinifibkmegcfhidgjamiaf'>
+              <updatecheck codebase='https://storage.googleapis.com/rangel-tech-ratende-connector/ratende-connector.crx' version='${VERSION}' />
+            </app>
+          </gupdate>
+          EOF
+      - name: Empacota o instalador Linux (.deb real, dpkg-deb nativo do runner)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          PKG=ratende-connector-installer
+          ROOT=/tmp/$PKG
+          mkdir -p "$ROOT/DEBIAN"
+          cat > "$ROOT/DEBIAN/control" <<EOF
+          Package: $PKG
+          Version: $VERSION
+          Section: web
+          Priority: optional
+          Architecture: all
+          Maintainer: Rangel Tech <contato@rangeltech.net>
+          Description: Instala a politica do Chrome/Chromium pra puxar a extensao RAtende Connector automaticamente, sem precisar de Modo desenvolvedor.
+          EOF
+          cat > "$ROOT/DEBIAN/postinst" <<'EOF'
+          #!/bin/sh
+          set -e
+          EXT_ID="ndamceimnbinifibkmegcfhidgjamiaf"
+          UPDATE_URL="https://storage.googleapis.com/rangel-tech-ratende-connector/update_manifest.xml"
+          for dir in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
+            mkdir -p "$dir"
+            cat > "$dir/ratende-connector.json" <<POLICY
+          {
+            "ExtensionInstallForcelist": ["${EXT_ID};${UPDATE_URL}"]
+          }
+          POLICY
+          done
+          exit 0
+          EOF
+          cat > "$ROOT/DEBIAN/postrm" <<'EOF'
+          #!/bin/sh
+          set -e
+          rm -f /etc/opt/chrome/policies/managed/ratende-connector.json
+          rm -f /etc/chromium/policies/managed/ratende-connector.json
+          rm -f /etc/chromium-browser/policies/managed/ratende-connector.json
+          exit 0
+          EOF
+          chmod 755 "$ROOT/DEBIAN/postinst" "$ROOT/DEBIAN/postrm"
+          dpkg-deb --build --root-owner-group "$ROOT" "ratende-connector-installer.deb"
       - uses: actions/upload-artifact@v4
         with:
-          name: ratende-connector-zip
-          path: ratende-connector.zip
+          name: ratende-connector-build
+          path: |
+            ratende-connector.zip
+            ratende-connector.crx
+            update_manifest.xml
+            ratende-connector-installer.deb
+            installers/Instalar-RAtende-Connector.bat
+            installers/Desinstalar-RAtende-Connector.bat
           retention-days: 7
+          if-no-files-found: warn
 
   publish-download:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -53,7 +138,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ratende-connector-zip
+          name: ratende-connector-build
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -61,8 +146,23 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Sobe o zip pro bucket publico (nome fixo -- link do Dashboard nunca muda)
+      - name: Sobe tudo pro bucket publico (nomes fixos -- links nunca mudam)
         run: |
           gcloud storage cp ratende-connector.zip \
             gs://rangel-tech-ratende-connector/ratende-connector.zip \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp ratende-connector.crx \
+            gs://rangel-tech-ratende-connector/ratende-connector.crx \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp update_manifest.xml \
+            gs://rangel-tech-ratende-connector/update_manifest.xml \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp ratende-connector-installer.deb \
+            gs://rangel-tech-ratende-connector/ratende-connector-installer.deb \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp installers/Instalar-RAtende-Connector.bat \
+            gs://rangel-tech-ratende-connector/Instalar-RAtende-Connector.bat \
+            --cache-control="no-cache, max-age=0"
+          gcloud storage cp installers/Desinstalar-RAtende-Connector.bat \
+            gs://rangel-tech-ratende-connector/Desinstalar-RAtende-Connector.bat \
             --cache-control="no-cache, max-age=0"

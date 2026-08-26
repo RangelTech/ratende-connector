@@ -5,9 +5,19 @@ import pkg from './package.json'
 // Minimo privilegio: host_permissions cobre so os 3 providers de prova
 // (Instagram/Facebook/TikTok) + o backend do agent-platform. Nao pede
 // <all_urls>.
+// Chave pública fixa (26/08/2026): trava o ID da extensão pra sempre em
+// `ndamceimnbinifibkmegcfhidgjamiaf` -- necessário pro instalador via
+// política do Chrome (ExtensionInstallForcelist) apontar sempre pro mesmo
+// ID entre builds. Chave privada correspondente NUNCA entra neste repo --
+// fica em `personal-skills/secrets/ratende-connector/extension-signing-key.pem`
+// (cofre), usada só no momento de empacotar o .crx assinado.
+const CHAVE_PUBLICA_FIXA =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0HFpah3CqmGfDuTG9JpOfNXbXhliS7nr+ZFMN3uLaCOn4zars6o05ZTMLx8VQrCfOiYeYI2b+zMH653uoqj0+VgHrPQaIw81sKbeDU5N604pJ5nmBEIs9e5APmxnz2v5R+q8uhD5pPU2hG2w/8iW7ze+FTYSckkezimDoBC7HFqKWFCJRRstn0H/BTStBUeWNoUwJwZk+dkQdxmdwKSqCmpGInOWzmGuTXgTr7uKFFEAmT06AGKNcfE7L6tb2w0MS4eSDFrVgWwTocZzt05Sa2JRp54FYXjso5Nskejbpxsgz37hseall+TF1OgMmcA9qMssek1hKmY6p21ApmBj8QIDAQAB'
+
 export default defineManifest({
   manifest_version: 3,
   name: 'RAtende Connector',
+  key: CHAVE_PUBLICA_FIXA,
   version: pkg.version,
   description: 'Conecta contas do RAtende/RAgentes e captura sessoes autorizadas de providers nao oficiais.',
   icons: {
