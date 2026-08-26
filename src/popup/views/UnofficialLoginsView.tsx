@@ -1,19 +1,11 @@
 import { useEffect, useState } from 'react'
-import { PROVIDERS, type ProviderId, type UnofficialProvider } from '../../lib/providers'
-import { OAUTH_PROVIDERS, findOAuthProvider, type OAuthProvider, type OAuthProviderId } from '../../lib/oauthProviders'
+import { PROVIDERS, type ProviderId } from '../../lib/providers'
+import { OAUTH_PROVIDERS, type OAuthProviderId } from '../../lib/oauthProviders'
 import { listarConexoes, removerConexao, renomearConexao, type UnofficialConnection } from '../../lib/api'
 import type { SessaoExtensao } from '../../lib/storage'
 import { log } from '../../lib/logger'
 import { detectarBloqueadores, pausarExtensao, type ExtensaoSuspeita } from '../../lib/blockerDetection'
-import { IconCheck, IconChevronDown, IconPlus, IconX } from '../icons'
-
-// 26/08/2026, feedback do dono: clicar "+" DE DENTRO da propria aba de
-// status fazia ela mandar "abrir_status_tab" pra si mesma -- recarregava
-// a pagina embaixo do usuario no meio do clique ("quebrando a
-// visualizacao", parecia tentar abrir de novo em loop). Se esta pagina JA
-// foi aberta como aba de status (tem ?flow= na URL), nao manda essa
-// mensagem de novo -- so dispara a captura e atualiza o estado local.
-const SOU_A_ABA_DE_STATUS = new URLSearchParams(window.location.search).get('flow') !== null
+import { IconChevronDown, IconPlus, IconX } from '../icons'
 
 /* produto-15 -- 26/08/2026, 2a rodada (pedido do dono): lista estilo Okta
    (linha por provider, contador de contas, expandir mostra cada conta com
@@ -21,18 +13,10 @@ const SOU_A_ABA_DE_STATUS = new URLSearchParams(window.location.search).get('flo
    detecta (background faz isso, ver cookieFlow.ts/oauthFlow.ts) -- esta
    view só dispara o início e mostra o resultado, sem botão "Conectar"
    manual. */
-export function UnofficialLoginsView({
-  sessao,
-  aberturaInicial,
-}: {
-  sessao: SessaoExtensao
-  aberturaInicial?: { flow: 'cookie' | 'oauth'; provider: string }
-}) {
+export function UnofficialLoginsView({ sessao }: { sessao: SessaoExtensao }) {
   const [conexoes, setConexoes] = useState<UnofficialConnection[]>([])
   const [carregando, setCarregando] = useState(true)
   const [expandido, setExpandido] = useState<string | null>(null)
-  const [providerAberto, setProviderAberto] = useState<UnofficialProvider | null>(null)
-  const [oauthAberto, setOauthAberto] = useState<OAuthProviderId | null>(null)
   const [avisoBloqueio, setAvisoBloqueio] = useState<{
     flow: 'cookie' | 'oauth'
     provider: string
@@ -50,15 +34,6 @@ export function UnofficialLoginsView({
 
   useEffect(() => {
     recarregar()
-    // 26/08/2026 -- esta tela abriu como aba de status (ver
-    // src/background/statusTab.ts): so mostra o overlay de progresso, a
-    // captura em si ja foi disparada pelo background antes de abrir a aba.
-    if (aberturaInicial?.flow === 'cookie') {
-      const provider = PROVIDERS.find((p) => p.id === aberturaInicial.provider)
-      if (provider) setProviderAberto(provider)
-    } else if (aberturaInicial?.flow === 'oauth') {
-      setOauthAberto(aberturaInicial.provider as OAuthProviderId)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -75,24 +50,13 @@ export function UnofficialLoginsView({
     prosseguir(flow, provider)
   }
 
+  /* 26/08/2026, pedido do dono (versao final): a captura salva sozinha,
+     sem confirmacao manual -- entao NAO precisa de aba/tela nenhuma
+     depois de clicar "+". So dispara e pronto: abre a aba de login (o
+     background cuida disso), e se o usuario quiser conferir se pegou,
+     reabre a extensao ele mesmo. Zero aba extra, zero foco roubado. */
   function prosseguir(flow: 'cookie' | 'oauth', provider: string) {
     setAvisoBloqueio(null)
-    if (SOU_A_ABA_DE_STATUS) {
-      // Ja estamos na aba certa -- so dispara a captura de verdade
-      // diretamente, sem pedir pro background reabrir/recarregar ESTA
-      // mesma aba (isso derrubaria a tela no meio do clique).
-      chrome.runtime.sendMessage({
-        type: flow === 'cookie' ? 'iniciar_captura_cookie_request' : 'iniciar_oauth_request',
-        provider,
-      })
-      if (flow === 'cookie') setProviderAberto(PROVIDERS.find((p) => p.id === provider) ?? null)
-      else setOauthAberto(provider as OAuthProviderId)
-      return
-    }
-    // Popup pequeno: o background orquestra tudo (abre/foca a aba de
-    // status sem roubar foco, depois inicia a captura de verdade -- que
-    // abre a aba de login e fica em primeiro plano) -- ver
-    // src/background/statusTab.ts.
     chrome.runtime.sendMessage({ type: 'abrir_status_tab', flow, provider })
   }
 
@@ -158,25 +122,6 @@ export function UnofficialLoginsView({
             </button>
           </div>
         </div>
-      )}
-
-      {providerAberto && (
-        <CapturaModal
-          provider={providerAberto}
-          onFechar={() => {
-            setProviderAberto(null)
-            recarregar()
-          }}
-        />
-      )}
-      {oauthAberto && (
-        <CapturaOAuthModal
-          providerId={oauthAberto}
-          onFechar={() => {
-            setOauthAberto(null)
-            recarregar()
-          }}
-        />
       )}
 
       {carregando ? (
@@ -414,173 +359,3 @@ function ContaRow({
   )
 }
 
-type EstadoCaptura = 'aguardando' | 'salvo' | 'erro'
-
-/* 26/08/2026 -- popup só dispara e acompanha; a captura de verdade (cookie
-   via onChanged, oauth via webNavigation/content script) e o salvamento no
-   backend rodam inteiros no background (sobrevive ao popup fechado, ver
-   src/background/cookieFlow.ts e oauthFlow.ts). Sem botão "Conectar" --
-   salva sozinho assim que detecta. */
-function CapturaModal({ provider, onFechar }: { provider: UnofficialProvider; onFechar: () => void }) {
-  const [estado, setEstado] = useState<EstadoCaptura>('aguardando')
-  const [erro, setErro] = useState('')
-
-  useEffect(() => {
-    let cancelado = false
-    const chave = `ratende_connector_cookie_resultado_${provider.id}`
-
-    const intervalo = window.setInterval(async () => {
-      const r = await chrome.storage.local.get(chave)
-      const resultado = r[chave] as { ok: true } | { ok: false; erro: string } | undefined
-      if (!resultado || cancelado) return
-      window.clearInterval(intervalo)
-      await chrome.storage.local.remove(chave)
-      if (resultado.ok) {
-        setEstado('salvo')
-        window.setTimeout(() => {
-          if (!cancelado) onFechar()
-        }, 1100)
-      } else {
-        setErro(resultado.erro)
-        setEstado('erro')
-      }
-    }, 1200)
-
-    return () => {
-      cancelado = true
-      window.clearInterval(intervalo)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  return (
-    <StatusOverlay
-      titulo={`Conectar ${provider.nome}`}
-      estado={estado}
-      erro={erro}
-      textoAguardando="Faça login normalmente na aba que abriu. Conecto sozinho assim que detectar a sessão."
-      textoSalvo="Conectado!"
-      onFechar={onFechar}
-    />
-  )
-}
-
-function CapturaOAuthModal({ providerId, onFechar }: { providerId: OAuthProviderId; onFechar: () => void }) {
-  const provider = findOAuthProvider(providerId) as OAuthProvider
-  const [estado, setEstado] = useState<EstadoCaptura>('aguardando')
-  const [erro, setErro] = useState('')
-
-  useEffect(() => {
-    let cancelado = false
-    const chave = `ratende_connector_oauth_resultado_${providerId}`
-
-    const intervalo = window.setInterval(async () => {
-      const r = await chrome.storage.local.get(chave)
-      const resultado = r[chave] as { ok: true } | { ok: false; erro: string } | undefined
-      if (!resultado || cancelado) return
-      window.clearInterval(intervalo)
-      await chrome.storage.local.remove(chave)
-      if (resultado.ok) {
-        setEstado('salvo')
-        window.setTimeout(() => {
-          if (!cancelado) onFechar()
-        }, 1100)
-      } else {
-        setErro(resultado.erro)
-        setEstado('erro')
-      }
-    }, 1200)
-
-    return () => {
-      cancelado = true
-      window.clearInterval(intervalo)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  return (
-    <StatusOverlay
-      titulo={`Conectar ${provider.nome}`}
-      estado={estado}
-      erro={erro}
-      textoAguardando="Autorize normalmente na aba que abriu. Conecto sozinho assim que terminar."
-      textoSalvo="Conectado!"
-      onFechar={onFechar}
-    />
-  )
-}
-
-function StatusOverlay({
-  titulo,
-  estado,
-  erro,
-  textoAguardando,
-  textoSalvo,
-  onFechar,
-}: {
-  titulo: string
-  estado: EstadoCaptura
-  erro: string
-  textoAguardando: string
-  textoSalvo: string
-  onFechar: () => void
-}) {
-  // 26/08/2026, feedback do dono: overlay fixed cobrindo a tela inteira
-  // ficava um vazio gigante quando esta view abre como aba de verdade (não
-  // é mais um popupzinho de 480px) -- virou card normal no fluxo, não modal.
-  return (
-    <div style={{ background: 'var(--surface-elevated)', borderRadius: 'var(--radius-card)', padding: 18, boxShadow: 'var(--shadow-soft)', border: '1px solid var(--border)', marginBottom: 16 }}>
-      <h2 style={{ fontSize: 13.5, margin: '0 0 10px', color: 'var(--text)', fontWeight: 700 }}>{titulo}</h2>
-
-        {estado === 'aguardando' && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <span
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                border: '2px solid var(--brand-soft)',
-                borderTopColor: 'var(--brand)',
-                animation: 'ratende-spin 800ms linear infinite',
-                flexShrink: 0,
-                marginTop: 2,
-              }}
-            />
-            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{textoAguardando}</p>
-          </div>
-        )}
-        {estado === 'salvo' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: '50%',
-                background: 'var(--success-soft)',
-                color: 'var(--success)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <IconCheck />
-            </span>
-            <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, fontWeight: 600 }}>{textoSalvo}</p>
-          </div>
-        )}
-        {estado === 'erro' && (
-          <>
-            <p style={{ fontSize: 12.5, color: 'var(--danger)', margin: '0 0 12px', lineHeight: 1.5 }}>{erro}</p>
-            <button
-              onClick={onFechar}
-              style={{ fontSize: 12, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-input)', padding: '7px 12px' }}
-            >
-              Fechar
-            </button>
-          </>
-        )}
-      <style>{'@keyframes ratende-spin { to { transform: rotate(360deg); } }'}</style>
-    </div>
-  )
-}
