@@ -145,11 +145,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
 })
 
 // Claude Code: nao usa localhost -- o content script na pagina hospedada da
-// Anthropic (console.anthropic.com/oauth/code/callback) manda o codigo por
+// Anthropic (platform.claude.com/oauth/code/callback) manda o codigo por
 // mensagem (ver src/content/claudeOAuthCallback.ts).
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'claude_oauth_code') {
-    if (!sender.tab?.url?.startsWith('https://console.anthropic.com/oauth/code/callback')) return false
+    if (!sender.tab?.url?.startsWith('https://platform.claude.com/oauth/code/callback')) return false
     concluirOAuth('claude_code', message.code, message.state).then(() => sendResponse({ ok: true }))
     return true
   }

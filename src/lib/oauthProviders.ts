@@ -62,9 +62,15 @@ export const OAUTH_PROVIDERS: OAuthProvider[] = [
     nome: 'Claude Code (Anthropic)',
     captura: 'pagina_hospedada',
     authorizeUrl: 'https://claude.ai/oauth/authorize',
-    tokenUrl: 'https://console.anthropic.com/v1/oauth/token',
+    // 26/08/2026, achado em teste ao vivo: a pagina de callback real e'
+    // platform.claude.com, nao console.anthropic.com como a pesquisa
+    // (reimplementacoes de terceiros) apontava -- rebrand recente da
+    // Anthropic. Endpoint de token ainda nao confirmado ao vivo (so a
+    // pagina de callback foi observada) -- assumindo mesmo dominio do
+    // rebrand, mas isso PRECISA de outro teste real pra confirmar.
+    tokenUrl: 'https://platform.claude.com/v1/oauth/token',
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-    redirectUri: 'https://console.anthropic.com/oauth/code/callback',
+    redirectUri: 'https://platform.claude.com/oauth/code/callback',
     scope: 'org:create_api_key user:profile user:inference',
   },
 ]

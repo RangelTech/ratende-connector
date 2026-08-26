@@ -47,8 +47,12 @@ export default defineManifest({
     // Codex (OpenAI) -- autorizacao + troca de token.
     'https://auth.openai.com/*',
     // Claude Code (Anthropic) -- autorizacao (claude.ai) + pagina de
-    // callback hospedada e troca de token (console.anthropic.com).
+    // callback hospedada e troca de token (platform.claude.com --
+    // dominio confirmado em teste ao vivo 26/08/2026, rebrand recente;
+    // console.anthropic.com mantido por seguranca ate confirmar 100% que
+    // nao e' mais usado em nenhuma etapa).
     'https://claude.ai/*',
+    'https://platform.claude.com/*',
     'https://console.anthropic.com/*',
     // Codex tenta abrir um servidor local de verdade em localhost:1455/1457
     // -- so precisamos ver a TENTATIVA de navegacao (webNavigation), nao
@@ -58,7 +62,7 @@ export default defineManifest({
   ],
   content_scripts: [
     {
-      matches: ['https://console.anthropic.com/oauth/code/callback*'],
+      matches: ['https://platform.claude.com/oauth/code/callback*'],
       js: ['src/content/claudeOAuthCallback.ts'],
       run_at: 'document_idle',
     },

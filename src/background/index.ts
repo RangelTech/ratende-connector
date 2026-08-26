@@ -9,6 +9,7 @@
 
 import { log } from '../lib/logger'
 import './oauthFlow'
+import './cookieFlow'
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   if (message?.type === 'ping') {

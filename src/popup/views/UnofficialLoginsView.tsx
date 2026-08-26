@@ -193,44 +193,54 @@ function CapturaModal({
   const [cookiesDetectados, setCookiesDetectados] = useState<CookieBundle[] | null>(null)
   const [erro, setErro] = useState('')
 
+  /* 26/08/2026 -- achado em teste ao vivo: o popup do Chrome fecha sozinho
+     assim que a aba de login abre e perde o foco, matando qualquer estado
+     React (inclusive um setInterval local) antes da captura terminar. A
+     captura de verdade agora roda no background (ver
+     src/background/cookieFlow.ts, chrome.cookies.onChanged -- orientado a
+     evento, sobrevive ao popup fechado). Este modal só pede pro background
+     iniciar (se ainda não tiver um resultado pendente/pronto) e fica de
+     olho em chrome.storage.local -- funciona mesmo reabrindo o popup depois
+     de ter fechado no meio do login. */
   useEffect(() => {
-    log('captura iniciada', { provider: provider.id, cookieDomain: provider.cookieDomain })
-    chrome.tabs.create({ url: provider.loginUrl })
+    let cancelado = false
+    const chave = `ratende_connector_cookie_resultado_${provider.id}`
 
-    let tentativas = 0
-    const intervalo = window.setInterval(async () => {
-      tentativas += 1
-      const cookies = await chrome.cookies.getAll({ domain: provider.cookieDomain })
-      const encontrados = provider.cookieDeSessao.every((nome) =>
-        cookies.some((c) => c.name === nome),
-      )
-      // Loga só a cada 10 tentativas (20s) pra não inundar o ring buffer
-      // enquanto o usuário demora pra fazer login.
-      if (tentativas % 10 === 0) {
-        log('aguardando cookies de sessao', {
-          provider: provider.id,
-          tentativas,
-          cookiesPresentes: cookies.map((c) => c.name),
-        })
-      }
-      if (encontrados) {
-        window.clearInterval(intervalo)
-        const detectados = cookies
-          .filter((c) => provider.cookieDeSessao.includes(c.name))
-          .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
-        log('sessao detectada', { provider: provider.id, cookies: detectados.map((c) => c.name) })
-        setCookiesDetectados(detectados)
+    async function iniciarOuRetomar() {
+      const existente = await chrome.storage.local.get(chave)
+      const resultado = existente[chave] as { ok: true; cookies: CookieBundle[] } | undefined
+      if (resultado?.ok) {
+        if (cancelado) return
+        setCookiesDetectados(resultado.cookies)
         setEstado('sessao_detectada')
+        return
       }
-    }, 2000)
+      log('captura iniciada', { provider: provider.id, cookieDomain: provider.cookieDomain })
+      chrome.runtime.sendMessage({ type: 'iniciar_captura_cookie_request', provider: provider.id })
+    }
+    iniciarOuRetomar()
 
-    return () => window.clearInterval(intervalo)
+    const intervalo = window.setInterval(async () => {
+      const r = await chrome.storage.local.get(chave)
+      const resultado = r[chave] as { ok: true; cookies: CookieBundle[] } | undefined
+      if (!resultado?.ok || cancelado) return
+      window.clearInterval(intervalo)
+      log('sessao detectada', { provider: provider.id, cookies: resultado.cookies.map((c) => c.name) })
+      setCookiesDetectados(resultado.cookies)
+      setEstado('sessao_detectada')
+    }, 1500)
+
+    return () => {
+      cancelado = true
+      window.clearInterval(intervalo)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function confirmar() {
     if (!cookiesDetectados) return
     setEstado('enviando')
+    await chrome.storage.local.remove(`ratende_connector_cookie_resultado_${provider.id}`)
     try {
       await criarConexao(sessao.token, {
         provider: provider.id,
@@ -320,15 +330,39 @@ function CapturaOAuthModal({
   const [tokens, setTokens] = useState<unknown>(null)
   const [erro, setErro] = useState('')
 
+  /* 26/08/2026 -- mesmo achado do CapturaModal (cookie): popup fecha
+     sozinho quando a aba de autorizacao abre, entao NUNCA reinicia o
+     fluxo sem antes checar se já tem resultado pendente/pronto do
+     background (senão reabrir o popup depois de um login já concluído
+     dispararia uma autorização nova por cima, duplicando a aba). */
   useEffect(() => {
-    log('oauth: pedindo pro background iniciar', { provider: providerId })
-    chrome.runtime.sendMessage({ type: 'iniciar_oauth_request', provider: providerId })
-
+    let cancelado = false
     const chave = `ratende_connector_oauth_resultado_${providerId}`
+
+    async function iniciarOuRetomar() {
+      const existente = await chrome.storage.local.get(chave)
+      const resultado = existente[chave] as { ok: true; tokens: unknown } | { ok: false; erro: string } | undefined
+      if (resultado) {
+        if (cancelado) return
+        await chrome.storage.local.remove(chave)
+        if (resultado.ok) {
+          setTokens(resultado.tokens)
+          setEstado('concluido')
+        } else {
+          setErro(resultado.erro)
+          setEstado('erro')
+        }
+        return
+      }
+      log('oauth: pedindo pro background iniciar', { provider: providerId })
+      chrome.runtime.sendMessage({ type: 'iniciar_oauth_request', provider: providerId })
+    }
+    iniciarOuRetomar()
+
     const intervalo = window.setInterval(async () => {
       const r = await chrome.storage.local.get(chave)
       const resultado = r[chave] as { ok: true; tokens: unknown } | { ok: false; erro: string } | undefined
-      if (!resultado) return
+      if (!resultado || cancelado) return
       window.clearInterval(intervalo)
       await chrome.storage.local.remove(chave)
       if (resultado.ok) {
@@ -340,7 +374,10 @@ function CapturaOAuthModal({
       }
     }, 1500)
 
-    return () => window.clearInterval(intervalo)
+    return () => {
+      cancelado = true
+      window.clearInterval(intervalo)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
