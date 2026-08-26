@@ -1,0 +1,68 @@
+name: CI
+
+# produto-15 (26/08/2026, pedido direto do dono): repo publico, build da
+# extensao e upload do zip pronto pra instalar no Chrome direto num bucket
+# GCS publico (`rangel-tech-ratende-connector`, criado via Terraform em
+# `rangel-tech-foundation/gcp/main.tf`, isolado do resto do projeto -- so
+# esse bucket eh publico). O card de download no Dashboard do
+# `agent-platform` aponta pra essa URL fixa, entao o nome do objeto no
+# bucket NUNCA muda (senao o link do card quebra a cada build).
+#
+# Auth via Workload Identity Federation, mesmo padrao ja usado nos outros
+# repos da org (`github-deployer` SA, `roles/storage.admin` no projeto --
+# ver rangel-tech-foundation). Variaveis de repo (GCP_PROJECT_ID,
+# GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SERVICE_ACCOUNT) setadas via
+# `gh variable set` no repo `RangelTech/ratende-connector`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install & build
+        run: |
+          npm ci
+          npm run build
+      - name: Empacota o zip pronto pra "Carregar sem compactacao" no Chrome
+        working-directory: dist
+        run: zip -r ../ratende-connector.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ratende-connector-zip
+          path: ratende-connector.zip
+          retention-days: 7
+
+  publish-download:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build]
+    concurrency:
+      group: ratende-connector-download-publish
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ratende-connector-zip
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Sobe o zip pro bucket publico (nome fixo -- link do Dashboard nunca muda)
+        run: |
+          gcloud storage cp ratende-connector.zip \
+            gs://rangel-tech-ratende-connector/ratende-connector.zip \
+            --cache-control="no-cache, max-age=0"
