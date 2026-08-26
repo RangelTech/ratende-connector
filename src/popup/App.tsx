@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react'
 import type { SessaoExtensao } from '../lib/storage'
 import { lerSessao, limparSessao } from '../lib/storage'
 import { LoginView } from './views/LoginView'
-import { MenuView } from './views/MenuView'
 import { UnofficialLoginsView } from './views/UnofficialLoginsView'
+import { PerfilView } from './views/PerfilView'
+import { LinksView } from './views/LinksView'
 import { SettingsView } from './views/SettingsView'
 import { LogsView } from './views/LogsView'
+import { Shell, type AbaShell } from './Shell'
 
-type Tela = 'menu' | 'nao-oficiais' | 'config' | 'logs'
+type Tela = 'shell' | 'config' | 'logs'
 
 // 26/08/2026 -- quando esta pagina abre como aba de status (ver
 // src/background/statusTab.ts) em vez de popup, vem com ?flow=cookie|oauth
-// e ?provider=id -- pula direto pro modal certo, sem passar pelo menu.
+// e ?provider=id -- pula direto pra aba Logins com o overlay certo.
 const params = new URLSearchParams(window.location.search)
 const flowParam = params.get('flow')
 const providerParam = params.get('provider')
@@ -25,7 +27,7 @@ const aberturaInicial: { flow: 'cookie' | 'oauth'; provider: string } | undefine
 export function App() {
   const [carregando, setCarregando] = useState(true)
   const [sessao, setSessao] = useState<SessaoExtensao | null>(null)
-  const [tela, setTela] = useState<Tela>(aberturaInicial ? 'nao-oficiais' : 'menu')
+  const [tela, setTela] = useState<Tela>('shell')
 
   useEffect(() => {
     lerSessao().then((s) => {
@@ -43,29 +45,23 @@ export function App() {
   async function sair() {
     await limparSessao()
     setSessao(null)
-    setTela('menu')
+    setTela('shell')
   }
 
-  if (tela === 'nao-oficiais') {
-    return (
-      <UnofficialLoginsView
-        sessao={sessao}
-        onVoltar={() => setTela('menu')}
-        aberturaInicial={aberturaInicial}
-      />
-    )
-  }
   if (tela === 'config') {
-    return <SettingsView onVoltar={() => setTela('menu')} onSair={sair} onAbrirLogs={() => setTela('logs')} />
+    return <SettingsView onVoltar={() => setTela('shell')} onSair={sair} onAbrirLogs={() => setTela('logs')} />
   }
   if (tela === 'logs') {
     return <LogsView onVoltar={() => setTela('config')} />
   }
+
   return (
-    <MenuView
-      sessao={sessao}
-      onAbrirNaoOficiais={() => setTela('nao-oficiais')}
-      onAbrirConfig={() => setTela('config')}
-    />
+    <Shell sessao={sessao} abaInicial={aberturaInicial ? 'logins' : 'perfil'} onAbrirConfig={() => setTela('config')}>
+      {(aba: AbaShell) => {
+        if (aba === 'perfil') return <PerfilView sessao={sessao} onSair={sair} />
+        if (aba === 'links') return <LinksView sessao={sessao} />
+        return <UnofficialLoginsView sessao={sessao} aberturaInicial={aberturaInicial} />
+      }}
+    </Shell>
   )
 }

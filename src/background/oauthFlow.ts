@@ -6,6 +6,8 @@
 import { findOAuthProvider, redirectUriDoProvider, type OAuthProvider, type OAuthProviderId } from '../lib/oauthProviders'
 import { gerarCodeChallenge, gerarCodeVerifier, gerarState } from '../lib/pkce'
 import { log, logErro } from '../lib/logger'
+import { lerSessao } from '../lib/storage'
+import { criarConexaoOAuth } from '../lib/api'
 
 interface PendenteOAuth {
   provider: OAuthProviderId
@@ -96,12 +98,26 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
   const chaveResultado = `ratende_connector_oauth_resultado_${providerId}`
   try {
     const tokens = await trocarCodigoPorToken(provider, code, pendente.codeVerifier, pendente.redirectUri)
-    await chrome.storage.local.set({
-      [chaveResultado]: { ok: true, tokens, obtidoEm: new Date().toISOString() },
-    })
     await log('oauth concluido com sucesso', { provider: providerId })
+
+    // 26/08/2026, pedido do dono: salva direto no backend, sem esperar
+    // clique de confirmar -- background ja tem tudo que precisa (sessao +
+    // API), popup nao precisa estar aberto.
+    const sessao = await lerSessao()
+    if (!sessao) {
+      await logErro('oauth concluido mas sem login no RAtende -- nao deu pra salvar', { providerId })
+      await chrome.storage.local.set({ [chaveResultado]: { ok: false, erro: 'Sem login no RAtende' } })
+    } else {
+      await criarConexaoOAuth(sessao.token, {
+        provider: providerId,
+        label: `${provider.nome} ${new Date().toLocaleString('pt-BR')}`,
+        oauth_tokens: tokens,
+      })
+      await log('oauth: conexao salva automaticamente', { provider: providerId })
+      await chrome.storage.local.set({ [chaveResultado]: { ok: true } })
+    }
   } catch (err) {
-    await logErro('falha na troca de token oauth', err)
+    await logErro('falha na troca de token oauth (ou ao salvar)', err)
     await chrome.storage.local.set({
       [chaveResultado]: { ok: false, erro: err instanceof Error ? err.message : 'falha desconhecida' },
     })
@@ -166,7 +182,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 export async function lerResultadoOAuth(
   providerId: OAuthProviderId,
-): Promise<{ ok: true; tokens: unknown; obtidoEm: string } | { ok: false; erro: string } | undefined> {
+): Promise<{ ok: true } | { ok: false; erro: string } | undefined> {
   const chave = `ratende_connector_oauth_resultado_${providerId}`
   const r = await chrome.storage.local.get(chave)
   return r[chave]

@@ -5,12 +5,20 @@
 // NADA era salvo mesmo com o usuario ja logado). chrome.cookies.onChanged
 // e' 100% orientado a evento (sem setInterval), sobrevive ao popup fechado
 // e a suspensao do service worker.
+//
+// 26/08/2026 (2a rodada, pedido do dono): manda pro backend sozinho assim
+// que detecta, sem esperar o usuario clicar "Conectar" -- o background ja
+// tem acesso a sessao (chrome.storage.local, mesmo lugar que o popup usa)
+// e a API, nao precisa do popup vivo pra nada.
 
 import { findProvider, type ProviderId } from '../lib/providers'
 import { log, logErro } from '../lib/logger'
+import { lerSessao } from '../lib/storage'
+import { criarConexao } from '../lib/api'
 
 interface PendenteCookie {
   provider: ProviderId
+  tabId?: number
 }
 
 const CHAVE_PENDENTE = 'ratende_connector_cookie_pendente'
@@ -51,21 +59,42 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
   })
   if (!encontrados) return
 
+  const pendente = await lerPendente()
   const detectados = cookies
     .filter((c) => provider.cookieDeSessao.includes(c.name))
     .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
-  await chrome.storage.local.set({
-    [`ratende_connector_cookie_resultado_${providerId}`]: { ok: true, cookies: detectados },
-  })
   await log('sessao detectada (cookie)', { provider: providerId, cookies: detectados.map((c) => c.name) })
   await limparPendente()
+
+  const chaveResultado = `ratende_connector_cookie_resultado_${providerId}`
+  const sessao = await lerSessao()
+  if (!sessao) {
+    await logErro('sessao detectada mas sem login no RAtende -- nao deu pra salvar', { provider: providerId })
+    await chrome.storage.local.set({ [chaveResultado]: { ok: false, erro: 'Sem login no RAtende' } })
+    return
+  }
+  try {
+    await criarConexao(sessao.token, {
+      provider: providerId,
+      label: `${provider.nome} ${new Date().toLocaleString('pt-BR')}`,
+      cookies: detectados,
+    })
+    await log('conexao salva automaticamente', { provider: providerId })
+    await chrome.storage.local.set({ [chaveResultado]: { ok: true } })
+    if (pendente?.tabId) chrome.tabs.remove(pendente.tabId).catch(() => {})
+  } catch (err) {
+    await logErro('falha ao salvar conexao automaticamente', err)
+    await chrome.storage.local.set({
+      [chaveResultado]: { ok: false, erro: err instanceof Error ? err.message : 'falha ao salvar' },
+    })
+  }
 }
 
 export async function iniciarCapturaCookie(providerId: ProviderId): Promise<void> {
   const provider = findProvider(providerId)
   if (!provider) throw new Error(`provider desconhecido: ${providerId}`)
-  await chrome.tabs.create({ url: provider.loginUrl })
-  await salvarPendente({ provider: providerId })
+  const tab = await chrome.tabs.create({ url: provider.loginUrl })
+  await salvarPendente({ provider: providerId, tabId: tab.id })
   await log('captura cookie iniciada', { provider: providerId })
   // Confere na hora -- usuario pode ja estar logado (cookie ja existe antes
   // de qualquer onChanged dessa sessao disparar).
