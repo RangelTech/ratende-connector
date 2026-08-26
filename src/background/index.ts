@@ -8,6 +8,7 @@
 // existe e esta restrito aos dominios certos -- nenhuma acao real ainda.
 
 import { log } from '../lib/logger'
+import './oauthFlow'
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   if (message?.type === 'ping') {

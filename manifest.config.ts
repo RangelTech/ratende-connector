@@ -32,7 +32,10 @@ export default defineManifest({
     service_worker: 'src/background/index.ts',
     type: 'module',
   },
-  permissions: ['cookies', 'storage', 'tabs'],
+  // webNavigation: unica forma de capturar o redirect OAuth do Codex
+  // (localhost:1455/1457) sem subir servidor/app local -- ver
+  // src/background/oauthFlow.ts.
+  permissions: ['cookies', 'storage', 'tabs', 'webNavigation'],
   host_permissions: [
     'https://www.instagram.com/*',
     'https://www.facebook.com/*',
@@ -41,6 +44,24 @@ export default defineManifest({
     // pra homolog/producao (dev usa localhost via vite).
     'https://ia.rangeltech.net/*',
     'http://localhost:8090/*',
+    // Codex (OpenAI) -- autorizacao + troca de token.
+    'https://auth.openai.com/*',
+    // Claude Code (Anthropic) -- autorizacao (claude.ai) + pagina de
+    // callback hospedada e troca de token (console.anthropic.com).
+    'https://claude.ai/*',
+    'https://console.anthropic.com/*',
+    // Codex tenta abrir um servidor local de verdade em localhost:1455/1457
+    // -- so precisamos ver a TENTATIVA de navegacao (webNavigation), nao
+    // fazer requisicao pra la, mas o host_permissions cobre a garantia de
+    // que o evento chega mesmo sem nada escutando a porta.
+    'http://localhost/*',
+  ],
+  content_scripts: [
+    {
+      matches: ['https://console.anthropic.com/oauth/code/callback*'],
+      js: ['src/content/claudeOAuthCallback.ts'],
+      run_at: 'document_idle',
+    },
   ],
   externally_connectable: {
     matches: ['https://ia.rangeltech.net/*', 'https://chat.rangeltech.net/*'],

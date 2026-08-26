@@ -41,10 +41,6 @@ export function findProvider(id: ProviderId): UnofficialProvider | undefined {
   return PROVIDERS.find((p) => p.id === id)
 }
 
-// Claude/Codex aparecem na UI (produto-15 secao 8) mas nao tem adapter --
-// mecanismo de credencial e OAuth token via code exchange, nao cookie de
-// sessao web. Listados aqui separado, sempre desabilitados.
-export const PROVIDERS_EM_BREVE = [
-  { id: 'claude', nome: 'Claude' },
-  { id: 'codex', nome: 'Codex' },
-]
+// Claude Code e Codex tem adapter de verdade agora (26/08/2026) -- ver
+// lib/oauthProviders.ts. Mecanismo e' OAuth com PKCE, nao cookie de sessao
+// web, por isso vivem numa lista/fluxo separado (UnofficialLoginsView).

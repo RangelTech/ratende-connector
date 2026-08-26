@@ -91,6 +91,20 @@ export function criarConexao(
   )
 }
 
+// produto-15 -- mesma tabela/endpoint dos providers de cookie, mas o
+// payload carrega tokens OAuth (Codex/Claude Code) em vez de cookies. Ver
+// backend/app/routes/unofficial_connections.py.
+export function criarConexaoOAuth(
+  token: string,
+  payload: { provider: string; label: string; oauth_tokens: unknown },
+): Promise<UnofficialConnection> {
+  return request<UnofficialConnection>(
+    '/api/unofficial-connections',
+    { method: 'POST', body: JSON.stringify(payload) },
+    token,
+  )
+}
+
 export function removerConexao(token: string, id: string): Promise<void> {
   return request<void>(`/api/unofficial-connections/${id}`, { method: 'DELETE' }, token)
 }
