@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PROVIDERS, type ProviderId, type UnofficialProvider } from '../../lib/providers'
 import { OAUTH_PROVIDERS, findOAuthProvider, type OAuthProvider, type OAuthProviderId } from '../../lib/oauthProviders'
-import { listarConexoes, removerConexao, type UnofficialConnection } from '../../lib/api'
+import { listarConexoes, removerConexao, renomearConexao, type UnofficialConnection } from '../../lib/api'
 import type { SessaoExtensao } from '../../lib/storage'
 import { log } from '../../lib/logger'
 import { detectarBloqueadores, pausarExtensao, type ExtensaoSuspeita } from '../../lib/blockerDetection'
@@ -115,6 +115,11 @@ export function UnofficialLoginsView({
     recarregar()
   }
 
+  async function renomear(id: string, label: string) {
+    await renomearConexao(sessao.token, id, label)
+    recarregar()
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 16px' }}>
@@ -188,6 +193,7 @@ export function UnofficialLoginsView({
                 onToggle={() => setExpandido((atual) => (atual === p.id ? null : p.id))}
                 onAdicionar={() => tentarAbrir('cookie', p.id)}
                 onRemover={remover}
+                onRenomear={renomear}
               />
             ))}
           </div>
@@ -205,6 +211,7 @@ export function UnofficialLoginsView({
                 onToggle={() => setExpandido((atual) => (atual === p.id ? null : p.id))}
                 onAdicionar={() => tentarAbrir('oauth', p.id)}
                 onRemover={remover}
+                onRenomear={renomear}
               />
             ))}
           </div>
@@ -223,6 +230,7 @@ function ProviderCard({
   onToggle,
   onAdicionar,
   onRemover,
+  onRenomear,
 }: {
   nome: string
   contas: UnofficialConnection[]
@@ -230,6 +238,7 @@ function ProviderCard({
   onToggle: () => void
   onAdicionar: () => void
   onRemover: (id: string) => void
+  onRenomear: (id: string, label: string) => void
 }) {
   return (
     <div
@@ -313,31 +322,94 @@ function ProviderCard({
       {expandido && contas.length > 0 && (
         <div style={{ borderTop: '1px solid var(--border)' }}>
           {contas.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                padding: '9px 14px',
-                borderBottom: '1px solid var(--border)',
-              }}
-            >
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.external_label || c.label}
-              </span>
-              <button
-                onClick={() => onRemover(c.id)}
-                aria-label="Remover conta"
-                style={{ background: 'none', border: 'none', color: 'var(--text-faint)', flexShrink: 0, padding: 2 }}
-              >
-                <IconX />
-              </button>
-            </div>
+            <ContaRow key={c.id} conta={c} onRemover={onRemover} onRenomear={onRenomear} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function ContaRow({
+  conta,
+  onRemover,
+  onRenomear,
+}: {
+  conta: UnofficialConnection
+  onRemover: (id: string) => void
+  onRenomear: (id: string, label: string) => void
+}) {
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState(conta.label)
+
+  function salvar() {
+    setEditando(false)
+    const limpo = valor.trim()
+    if (limpo && limpo !== conta.label) onRenomear(conta.id, limpo)
+    else setValor(conta.label)
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        padding: '9px 14px',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      {editando ? (
+        <input
+          autoFocus
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onBlur={salvar}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') salvar()
+            if (e.key === 'Escape') {
+              setValor(conta.label)
+              setEditando(false)
+            }
+          }}
+          style={{
+            fontSize: 12,
+            padding: '3px 6px',
+            borderRadius: 6,
+            border: '1px solid var(--brand)',
+            minWidth: 0,
+            flex: 1,
+          }}
+        />
+      ) : (
+        <button
+          onClick={() => setEditando(true)}
+          title="Clique pra renomear"
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            fontSize: 12,
+            color: 'var(--text-muted)',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'left',
+            flex: 1,
+          }}
+        >
+          {conta.label}
+        </button>
+      )}
+      <button
+        onClick={() => onRemover(conta.id)}
+        aria-label="Remover conta"
+        style={{ background: 'none', border: 'none', color: 'var(--text-faint)', flexShrink: 0, padding: 2 }}
+      >
+        <IconX />
+      </button>
     </div>
   )
 }

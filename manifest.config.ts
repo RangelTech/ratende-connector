@@ -39,7 +39,12 @@ export default defineManifest({
   // (ver src/lib/blockerDetection.ts). NAO era a causa raiz do bug real
   // (ver nota abaixo sobre host_permissions), mas vale manter como
   // seguranca extra -- so avisa, nunca desativa nada sozinha.
-  permissions: ['cookies', 'storage', 'tabs', 'webNavigation', 'management'],
+  // scripting: 26/08/2026, pedido do dono -- le o nome de exibicao da
+  // conta direto da pagina logada (Facebook: "No que voce esta pensando,
+  // Nome?"; Instagram: link de perfil no menu) pra rotular a conta com
+  // nome de verdade em vez de so o ID numerico. So le texto ja visivel na
+  // pagina, nunca injeta nada.
+  permissions: ['cookies', 'storage', 'tabs', 'webNavigation', 'management', 'scripting'],
   // 26/08/2026, causa raiz real (confirmada lendo o banco de cookies do
   // Chrome direto do disco -- sessionid/c_user/xs SEMPRE existiram, o
   // Windscribe nunca foi o problema): o cookie de sessao do Instagram/

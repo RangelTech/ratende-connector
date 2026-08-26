@@ -36,6 +36,46 @@ async function limparPendente(): Promise<void> {
   await chrome.storage.session.remove(CHAVE_PENDENTE)
 }
 
+// 26/08/2026, pedido do dono: le o nome de exibicao direto da pagina
+// logada (so texto ja visivel, nunca injeta nada) pra rotular a conta com
+// nome de verdade em vez de so o ID numerico -- cookie nenhum dos 3
+// providers carrega email/@ em texto puro (confirmado inspecionando os
+// valores reais). Facebook: campo "No que voce esta pensando, Nome?" no
+// feed. Instagram: link de perfil no menu lateral (ultimo link de
+// usuario antes do fim da nav).
+async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promise<string | null> {
+  try {
+    if (providerId === 'facebook_web') {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const m = document.body.innerText.match(/pensando,\s*([^?\n]+)\?/)
+          return m?.[1]?.trim() ?? null
+        },
+      })
+      return (result as string | null) ?? null
+    }
+    if (providerId === 'instagram_web') {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const links = [...document.querySelectorAll('nav a[href^="/"]')]
+            .map((a) => a.getAttribute('href'))
+            .filter((h): h is string => !!h && /^\/[a-zA-Z0-9_.]+\/$/.test(h))
+          const ultimo = links[links.length - 1]
+          return ultimo ? ultimo.replace(/\//g, '') : null
+        },
+      })
+      return (result as string | null) ?? null
+    }
+  } catch (err) {
+    // Aba pode ja ter sido fechada/navegado antes do script rodar -- nao
+    // trava a captura por causa disso, so fica sem o nome bonito.
+    await logErro('extrairNomeDaPagina falhou (nao bloqueia a captura)', { provider: providerId, err })
+  }
+  return null
+}
+
 async function conferirAgora(providerId: ProviderId): Promise<void> {
   const provider = findProvider(providerId)
   if (!provider) return
@@ -68,10 +108,12 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
   // conta, nao a data da captura) e pra deduplicar (reconectar a mesma
   // conta atualiza em vez de empilhar duplicata).
   const idExterno = cookies.find((c) => c.name === provider.cookieIdExterno)?.value ?? null
+  const nomeExtraido = pendente?.tabId ? await extrairNomeDaPagina(providerId, pendente.tabId) : null
   await log('sessao detectada (cookie)', {
     provider: providerId,
     cookies: detectados.map((c) => c.name),
     idExterno,
+    nomeExtraido,
   })
   await limparPendente()
 
@@ -96,7 +138,7 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
     }
     await criarConexao(sessao.token, {
       provider: providerId,
-      label: provider.nome,
+      label: nomeExtraido ? `${provider.nome} · ${nomeExtraido}` : provider.nome,
       external_label: idExterno ? `#${idExterno}` : undefined,
       cookies: detectados,
     })

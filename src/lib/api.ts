@@ -121,3 +121,14 @@ export function criarConexaoOAuth(
 export function removerConexao(token: string, id: string): Promise<void> {
   return request<void>(`/api/unofficial-connections/${id}`, { method: 'DELETE' }, token)
 }
+
+// 26/08/2026 -- rotulo automatico (nome extraido da pagina ou ID numerico)
+// nem sempre acerta ou agrada; deixa o usuario renomear pra algo que ele
+// reconheca.
+export function renomearConexao(token: string, id: string, label: string): Promise<UnofficialConnection> {
+  return request<UnofficialConnection>(
+    `/api/unofficial-connections/${id}`,
+    { method: 'PATCH', body: JSON.stringify({ label }) },
+    token,
+  )
+}
