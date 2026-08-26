@@ -67,14 +67,16 @@ export default defineManifest({
     'http://localhost:8090/*',
     // Codex (OpenAI) -- autorizacao + troca de token.
     'https://auth.openai.com/*',
-    // Claude Code (Anthropic) -- autorizacao (claude.ai) + pagina de
-    // callback hospedada e troca de token (platform.claude.com --
-    // dominio confirmado em teste ao vivo 26/08/2026, rebrand recente;
-    // console.anthropic.com mantido por seguranca ate confirmar 100% que
-    // nao e' mais usado em nenhuma etapa).
+    // Claude Code (Anthropic) -- 3 hosts diferentes, cada um so numa
+    // etapa: claude.ai (autorizacao), platform.claude.com (pagina de
+    // callback hospedada, onde o usuario ve o codigo, confirmado em
+    // teste ao vivo 26/08), api.anthropic.com (troca de token de
+    // verdade -- confirmado lendo o codigo-fonte do 9Router, que o dono
+    // ja usou em producao; console.anthropic.com e platform.claude.com
+    // pro token deram 429/CORS, nao sao o endpoint certo).
     'https://claude.ai/*',
     'https://platform.claude.com/*',
-    'https://console.anthropic.com/*',
+    'https://api.anthropic.com/*',
     // Codex tenta abrir um servidor local de verdade em localhost:1455/1457
     // -- so precisamos ver a TENTATIVA de navegacao (webNavigation), nao
     // fazer requisicao pra la, mas o host_permissions cobre a garantia de
