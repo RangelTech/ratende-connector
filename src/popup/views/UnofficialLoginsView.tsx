@@ -13,14 +13,21 @@ import { detectarBloqueadores, pausarExtensao, type ExtensaoSuspeita } from '../
 export function UnofficialLoginsView({
   sessao,
   onVoltar,
+  aberturaInicial,
 }: {
   sessao: SessaoExtensao
   onVoltar: () => void
+  aberturaInicial?: { flow: 'cookie' | 'oauth'; provider: string }
 }) {
   const [conexoes, setConexoes] = useState<UnofficialConnection[]>([])
   const [carregando, setCarregando] = useState(true)
   const [providerAberto, setProviderAberto] = useState<UnofficialProvider | null>(null)
   const [oauthAberto, setOauthAberto] = useState<OAuthProviderId | null>(null)
+  const [avisoBloqueio, setAvisoBloqueio] = useState<{
+    flow: 'cookie' | 'oauth'
+    provider: string
+    bloqueadores: ExtensaoSuspeita[]
+  } | null>(null)
 
   async function recarregar() {
     setCarregando(true)
@@ -33,11 +40,52 @@ export function UnofficialLoginsView({
 
   useEffect(() => {
     recarregar()
+    // 26/08/2026 -- esta view abriu como aba de status (ver
+    // src/background/statusTab.ts): o bloqueador ja foi checado ANTES de
+    // abrir esta aba (na tela anterior), entao aqui e' so mostrar o modal
+    // certo direto, sem checar de novo.
+    if (aberturaInicial?.flow === 'cookie') {
+      const provider = PROVIDERS.find((p) => p.id === aberturaInicial.provider)
+      if (provider) setProviderAberto(provider)
+    } else if (aberturaInicial?.flow === 'oauth') {
+      setOauthAberto(aberturaInicial.provider as OAuthProviderId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function contasDoProvider(id: ProviderId | OAuthProviderId) {
     return conexoes.filter((c) => c.provider === id)
+  }
+
+  /* 26/08/2026, pedido do dono: nunca abre aba nenhuma (nem a de login nem
+     a de status) se tiver bloqueador ativo -- checa ANTES, e so prossegue
+     (manda o background abrir/focar a aba de status reaproveitada) depois
+     que o usuario pausar ou decidir continuar mesmo assim. */
+  async function tentarAbrir(flow: 'cookie' | 'oauth', provider: string) {
+    const bloqueadores = await detectarBloqueadores()
+    if (bloqueadores.length > 0) {
+      setAvisoBloqueio({ flow, provider, bloqueadores })
+      return
+    }
+    prosseguir(flow, provider)
+  }
+
+  function prosseguir(flow: 'cookie' | 'oauth', provider: string) {
+    setAvisoBloqueio(null)
+    chrome.runtime.sendMessage({ type: 'abrir_status_tab', flow, provider })
+  }
+
+  async function pausarNoAviso(id: string) {
+    await pausarExtensao(id)
+    setAvisoBloqueio((atual) => {
+      if (!atual) return atual
+      const restantes = atual.bloqueadores.filter((b) => b.id !== id)
+      if (restantes.length === 0) {
+        prosseguir(atual.flow, atual.provider)
+        return null
+      }
+      return { ...atual, bloqueadores: restantes }
+    })
   }
 
   return (
@@ -49,6 +97,39 @@ export function UnofficialLoginsView({
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Logins não oficiais</span>
       </header>
 
+      {avisoBloqueio && (
+        <div style={{ background: 'var(--danger-soft, #fee2e2)', margin: 8, borderRadius: 8, padding: 8 }}>
+          <p style={{ fontSize: 11, color: 'var(--danger)', margin: '0 0 6px', fontWeight: 600 }}>
+            Detectamos extensão de VPN/bloqueio ativa -- pode apagar o cookie de sessão. Pause antes de continuar:
+          </p>
+          {avisoBloqueio.bloqueadores.map((b) => (
+            <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <span style={{ fontSize: 11, color: 'var(--text)' }}>{b.nome}</span>
+              <button
+                onClick={() => pausarNoAviso(b.id)}
+                style={{ fontSize: 10, background: 'var(--danger)', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 6px' }}
+              >
+                Pausar agora
+              </button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+            <button
+              onClick={() => setAvisoBloqueio(null)}
+              style={{ fontSize: 11, background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => prosseguir(avisoBloqueio.flow, avisoBloqueio.provider)}
+              style={{ fontSize: 11, background: 'none', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 6, padding: '4px 8px' }}
+            >
+              Continuar mesmo assim
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: 8 }}>
         {carregando ? (
           <p style={{ fontSize: 12, color: 'var(--text-muted)', padding: 8 }}>Carregando…</p>
@@ -58,7 +139,7 @@ export function UnofficialLoginsView({
               key={p.id}
               provider={p}
               contas={contasDoProvider(p.id)}
-              onAdicionar={() => setProviderAberto(p)}
+              onAdicionar={() => tentarAbrir('cookie', p.id)}
             />
           ))
         )}
@@ -76,7 +157,7 @@ export function UnofficialLoginsView({
               key={p.id}
               nome={p.nome}
               contas={contasDoProvider(p.id)}
-              onConectar={() => setOauthAberto(p.id)}
+              onConectar={() => tentarAbrir('oauth', p.id)}
             />
           ))
         )}
