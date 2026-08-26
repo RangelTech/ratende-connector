@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  RAtende Connector -- instalador MSI (WiX v3), 26/08/2026.
+  RAtende Connector: instalador MSI (WiX v3), 26/08/2026.
 
   Mesmo mecanismo do .exe (NSIS) e do .bat: escreve a politica
   ExtensionInstallForcelist do Chrome/Edge apontando pro update manifest
-  hospedado -- MSI faz isso nativo via <RegistryKey>, sem precisar de
+  hospedado. MSI faz isso nativo via RegistryValue, sem precisar de
   Custom Action nem RequestExecutionLevel (msiexec ja pede elevacao
   sozinho pra instalacao per-machine).
 
-  UpgradeCode fixo -- NUNCA trocar, e o que garante que uma versao nova
+  UpgradeCode fixo: NUNCA trocar, e o que garante que uma versao nova
   do MSI reconhece e substitui a anterior em vez de instalar duplicado.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
