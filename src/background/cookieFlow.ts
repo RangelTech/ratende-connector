@@ -36,55 +36,78 @@ async function limparPendente(): Promise<void> {
   await chrome.storage.session.remove(CHAVE_PENDENTE)
 }
 
+async function tentarLerNomeUmaVez(providerId: ProviderId, tabId: number): Promise<string | null> {
+  if (providerId === 'facebook_web') {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const m = document.body.innerText.match(/pensando,\s*([^?\n]+)\?/)
+        return m?.[1]?.trim() ?? null
+      },
+    })
+    return (result as string | null) ?? null
+  }
+  if (providerId === 'instagram_web') {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        // 26/08/2026, achado ao vivo: o link de perfil NAO fica dentro de
+        // <nav> (versao anterior restrita a nav nao achava nada) -- pega
+        // qualquer link de usuario na pagina e ignora os que sao claramente
+        // de outros posts/stories (heuristica: o proprio link aparece perto
+        // do inicio do documento, antes do conteudo do feed).
+        const links = [...document.querySelectorAll('a[href^="/"]')]
+          .map((a) => a.getAttribute('href'))
+          .filter((h): h is string => !!h && /^\/[a-zA-Z0-9_.]+\/$/.test(h))
+        return links[0] ? links[0].replace(/\//g, '') : null
+      },
+    })
+    return (result as string | null) ?? null
+  }
+  if (providerId === 'tiktok_web') {
+    // Confirmado ao vivo 26/08/2026: TikTok marca o link de perfil no
+    // menu com data-e2e="nav-profile" (atributo de hook de teste deles,
+    // mais estavel que classe CSS ofuscada).
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const href = document.querySelector('[data-e2e="nav-profile"]')?.getAttribute('href')
+        return href?.startsWith('/@') ? href.slice(2) : null
+      },
+    })
+    return (result as string | null) ?? null
+  }
+  return null
+}
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // 26/08/2026, pedido do dono: le o nome de exibicao direto da pagina
 // logada (so texto ja visivel, nunca injeta nada) pra rotular a conta com
 // nome de verdade em vez de so o ID numerico -- cookie nenhum dos 3
 // providers carrega email/@ em texto puro (confirmado inspecionando os
 // valores reais). Facebook: campo "No que voce esta pensando, Nome?" no
-// feed. Instagram: link de perfil no menu lateral (ultimo link de
-// usuario antes do fim da nav).
+// feed. Instagram: link de perfil (primeiro link de usuario na pagina).
+// TikTok: data-e2e="nav-profile".
+//
+// Achado real: quando o provider ja estava logado, a checagem de cookie
+// disparava ANTES da pagina (SPA) terminar de renderizar esse texto --
+// tentativa unica voltava vazia. Tenta algumas vezes com espera curta em
+// vez de desistir na primeira.
 async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promise<string | null> {
-  try {
-    if (providerId === 'facebook_web') {
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          const m = document.body.innerText.match(/pensando,\s*([^?\n]+)\?/)
-          return m?.[1]?.trim() ?? null
-        },
-      })
-      return (result as string | null) ?? null
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    try {
+      const nome = await tentarLerNomeUmaVez(providerId, tabId)
+      if (nome) return nome
+    } catch (err) {
+      // Aba pode ja ter sido fechada/navegado -- nao trava a captura, so
+      // para de tentar.
+      await logErro('extrairNomeDaPagina falhou (nao bloqueia a captura)', { provider: providerId, err })
+      return null
     }
-    if (providerId === 'instagram_web') {
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          const links = [...document.querySelectorAll('nav a[href^="/"]')]
-            .map((a) => a.getAttribute('href'))
-            .filter((h): h is string => !!h && /^\/[a-zA-Z0-9_.]+\/$/.test(h))
-          const ultimo = links[links.length - 1]
-          return ultimo ? ultimo.replace(/\//g, '') : null
-        },
-      })
-      return (result as string | null) ?? null
-    }
-    if (providerId === 'tiktok_web') {
-      // Confirmado ao vivo 26/08/2026: TikTok marca o link de perfil no
-      // menu com data-e2e="nav-profile" (atributo de hook de teste deles,
-      // mais estavel que classe CSS ofuscada).
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          const href = document.querySelector('[data-e2e="nav-profile"]')?.getAttribute('href')
-          return href?.startsWith('/@') ? href.slice(2) : null
-        },
-      })
-      return (result as string | null) ?? null
-    }
-  } catch (err) {
-    // Aba pode ja ter sido fechada/navegado antes do script rodar -- nao
-    // trava a captura por causa disso, so fica sem o nome bonito.
-    await logErro('extrairNomeDaPagina falhou (nao bloqueia a captura)', { provider: providerId, err })
+    await esperar(700)
   }
   return null
 }
