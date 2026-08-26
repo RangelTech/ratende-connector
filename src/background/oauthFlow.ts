@@ -106,7 +106,9 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
       [chaveResultado]: { ok: false, erro: err instanceof Error ? err.message : 'falha desconhecida' },
     })
   } finally {
-    if (pendente.tabId) chrome.tabs.update(pendente.tabId, { url: 'about:blank' }).catch(() => {})
+    // 26/08/2026, feedback do dono: deixar a aba de autorizacao em branco
+    // (about:blank) parecia bug -- fecha a aba de verdade em vez disso.
+    if (pendente.tabId) chrome.tabs.remove(pendente.tabId).catch(() => {})
     await limparPendente()
   }
 }
