@@ -7,7 +7,7 @@ import { findOAuthProvider, redirectUriDoProvider, type OAuthProvider, type OAut
 import { gerarCodeChallenge, gerarCodeVerifier, gerarState } from '../lib/pkce'
 import { log, logErro } from '../lib/logger'
 import { lerSessao } from '../lib/storage'
-import { criarConexaoOAuth, listarConexoes, removerConexao } from '../lib/api'
+import { criarConexaoOAuth } from '../lib/api'
 
 // 26/08/2026, pedido do dono: Codex pede escopo "openid profile email" --
 // a resposta da troca de token ja vem com um id_token (JWT) contendo
@@ -157,14 +157,9 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
       await logErro('oauth concluido mas sem login no RAtende -- nao deu pra salvar', { providerId })
       await chrome.storage.local.set({ [chaveResultado]: { ok: false, erro: 'Sem login no RAtende' } })
     } else {
-      if (idExterno) {
-        const existentes = await listarConexoes(sessao.token)
-        const duplicada = existentes.find((c) => c.provider === providerId && c.external_label === `#${idExterno}`)
-        if (duplicada) {
-          await removerConexao(sessao.token, duplicada.id)
-          await log('conexao oauth duplicada removida antes de recriar', { providerId, idExterno })
-        }
-      }
+      // 26/08/2026 -- dedup e' o proprio backend via UPSERT atomico
+      // (migration 0039), mesmo motivo do cookieFlow.ts: checagem no
+      // codigo (listar -> comparar -> apagar -> criar) nao e' atomica.
       await criarConexaoOAuth(sessao.token, {
         provider: providerId,
         label: nomeExtraido ? `${provider.nome} · ${nomeExtraido}` : provider.nome,

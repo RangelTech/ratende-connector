@@ -14,7 +14,7 @@
 import { findProvider, type ProviderId } from '../lib/providers'
 import { log, logErro } from '../lib/logger'
 import { lerSessao } from '../lib/storage'
-import { criarConexao, listarConexoes, removerConexao } from '../lib/api'
+import { criarConexao } from '../lib/api'
 
 interface PendenteCookie {
   provider: ProviderId
@@ -52,13 +52,18 @@ async function tentarLerNomeUmaVez(providerId: ProviderId, tabId: number): Promi
       target: { tabId },
       func: () => {
         // 26/08/2026, achado ao vivo: o link de perfil NAO fica dentro de
-        // <nav> (versao anterior restrita a nav nao achava nada) -- pega
-        // qualquer link de usuario na pagina e ignora os que sao claramente
-        // de outros posts/stories (heuristica: o proprio link aparece perto
-        // do inicio do documento, antes do conteudo do feed).
+        // <nav> (versao anterior restrita a nav nao achava nada). Pega
+        // qualquer link de usuario na pagina, mas ignora os paths fixos do
+        // proprio Instagram (explore/reels/direct/etc -- confirmado ao
+        // vivo que "links[0]" pegava "/reels/" errado) -- o primeiro que
+        // sobra depois do filtro e' o link de perfil de verdade.
+        const FIXOS = new Set([
+          'explore', 'reels', 'direct', 'accounts', 'notifications', 'stories', 'p', 'tv', 'about', 'legal',
+        ])
         const links = [...document.querySelectorAll('a[href^="/"]')]
           .map((a) => a.getAttribute('href'))
           .filter((h): h is string => !!h && /^\/[a-zA-Z0-9_.]+\/$/.test(h))
+          .filter((h) => !FIXOS.has(h.replace(/\//g, '')))
         return links[0] ? links[0].replace(/\//g, '') : null
       },
     })
@@ -112,7 +117,25 @@ async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promi
   return null
 }
 
+// 26/08/2026, achado ao vivo: chrome.cookies.onChanged dispara MUITAS
+// vezes num site ativo (cada cookie que muda, nao so o de sessao) -- sem
+// essa trava, cada evento inicia sua propria leitura de pagina (5
+// tentativas x 700ms) em paralelo, desperdicando trabalho (o banco ja
+// garante que nao duplica, mas nao ha motivo pra rodar 9 leituras da
+// mesma pagina ao mesmo tempo).
+const emAndamento = new Set<ProviderId>()
+
 async function conferirAgora(providerId: ProviderId): Promise<void> {
+  if (emAndamento.has(providerId)) return
+  emAndamento.add(providerId)
+  try {
+    await conferirAgoraSemTrava(providerId)
+  } finally {
+    emAndamento.delete(providerId)
+  }
+}
+
+async function conferirAgoraSemTrava(providerId: ProviderId): Promise<void> {
   const provider = findProvider(providerId)
   if (!provider) return
   let cookies: chrome.cookies.Cookie[]
@@ -161,17 +184,13 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
     return
   }
   try {
-    if (idExterno) {
-      const existentes = await listarConexoes(sessao.token)
-      const duplicada = existentes.find((c) => c.provider === providerId && c.external_label === `#${idExterno}`)
-      if (duplicada) {
-        await removerConexao(sessao.token, duplicada.id)
-        await log('conexao duplicada removida antes de recriar (mesma conta reconectada)', {
-          provider: providerId,
-          idExterno,
-        })
-      }
-    }
+    // 26/08/2026, achado ao vivo: checar duplicata aqui (listar -> comparar
+    // -> apagar -> criar) NAO e' atomico -- varias capturas concorrentes
+    // (chrome.cookies.onChanged disparando em paralelo pro mesmo provider)
+    // passavam pela checagem ao mesmo tempo e criavam N duplicatas numa
+    // unica rodada (9 do Instagram, ao vivo). Dedup agora e' o proprio
+    // backend via UPSERT atomico (migration 0039 + ON CONFLICT) --
+    // reconectar a mesma conta sempre atualiza, garantido pelo banco.
     await criarConexao(sessao.token, {
       provider: providerId,
       label: nomeExtraido ? `${provider.nome} · ${nomeExtraido}` : provider.nome,
