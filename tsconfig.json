@@ -11,7 +11,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["chrome"]
+    "types": ["chrome", "vite/client"]
   },
   "include": ["src", "manifest.config.ts", "vite.config.ts"]
 }

@@ -2,9 +2,10 @@
 // de qualquer client externo autenticado (token normal de sessao) -- nao
 // tem endpoint especial so pra extensao.
 
-// TODO: trocar pelo dominio real (https://ia.rangeltech.net) no build de
-// producao -- dev usa o backend local.
-export const BACKEND_URL = 'http://localhost:8090'
+// Vite troca `import.meta.env.PROD` em tempo de build (nao runtime) --
+// dev server usa o backend local, `vite build` (o que vira o zip
+// distribuido, ver produto-15 secao 9) usa o dominio real.
+export const BACKEND_URL = import.meta.env.PROD ? 'https://ia.rangeltech.net' : 'http://localhost:8090'
 
 export class ApiError extends Error {
   status: number
