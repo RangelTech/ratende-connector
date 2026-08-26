@@ -68,6 +68,19 @@ async function extrairNomeDaPagina(providerId: ProviderId, tabId: number): Promi
       })
       return (result as string | null) ?? null
     }
+    if (providerId === 'tiktok_web') {
+      // Confirmado ao vivo 26/08/2026: TikTok marca o link de perfil no
+      // menu com data-e2e="nav-profile" (atributo de hook de teste deles,
+      // mais estavel que classe CSS ofuscada).
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const href = document.querySelector('[data-e2e="nav-profile"]')?.getAttribute('href')
+          return href?.startsWith('/@') ? href.slice(2) : null
+        },
+      })
+      return (result as string | null) ?? null
+    }
   } catch (err) {
     // Aba pode ja ter sido fechada/navegado antes do script rodar -- nao
     // trava a captura por causa disso, so fica sem o nome bonito.

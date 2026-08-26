@@ -7,7 +7,28 @@ import { findOAuthProvider, redirectUriDoProvider, type OAuthProvider, type OAut
 import { gerarCodeChallenge, gerarCodeVerifier, gerarState } from '../lib/pkce'
 import { log, logErro } from '../lib/logger'
 import { lerSessao } from '../lib/storage'
-import { criarConexaoOAuth } from '../lib/api'
+import { criarConexaoOAuth, listarConexoes, removerConexao } from '../lib/api'
+
+// 26/08/2026, pedido do dono: Codex pede escopo "openid profile email" --
+// a resposta da troca de token ja vem com um id_token (JWT) contendo
+// email/nome direto, sem precisar de chamada extra nem ler pagina nenhuma.
+// So decodifica o payload (base64url), sem verificar assinatura -- nao
+// precisamos confiar nisso pra autenticacao, so pra rotular a lista.
+function decodificarIdToken(idToken: string): { email?: string; name?: string; sub?: string } | null {
+  try {
+    const payload = idToken.split('.')[1]
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const json = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+        .join(''),
+    )
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
 
 interface PendenteOAuth {
   provider: OAuthProviderId
@@ -120,6 +141,14 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
     const tokens = await trocarCodigoPorToken(provider, code, pendente.codeVerifier, pendente.redirectUri)
     await log('oauth concluido com sucesso', { provider: providerId })
 
+    const idTokenClaims =
+      tokens && typeof tokens === 'object' && 'id_token' in tokens && typeof (tokens as { id_token: unknown }).id_token === 'string'
+        ? decodificarIdToken((tokens as { id_token: string }).id_token)
+        : null
+    const nomeExtraido = idTokenClaims?.name || idTokenClaims?.email || null
+    const idExterno = idTokenClaims?.sub ?? idTokenClaims?.email ?? null
+    await log('id_token decodificado', { provider: providerId, nomeExtraido, temSub: !!idTokenClaims?.sub })
+
     // 26/08/2026, pedido do dono: salva direto no backend, sem esperar
     // clique de confirmar -- background ja tem tudo que precisa (sessao +
     // API), popup nao precisa estar aberto.
@@ -128,9 +157,18 @@ async function concluirOAuth(providerId: OAuthProviderId, code: string, state: s
       await logErro('oauth concluido mas sem login no RAtende -- nao deu pra salvar', { providerId })
       await chrome.storage.local.set({ [chaveResultado]: { ok: false, erro: 'Sem login no RAtende' } })
     } else {
+      if (idExterno) {
+        const existentes = await listarConexoes(sessao.token)
+        const duplicada = existentes.find((c) => c.provider === providerId && c.external_label === `#${idExterno}`)
+        if (duplicada) {
+          await removerConexao(sessao.token, duplicada.id)
+          await log('conexao oauth duplicada removida antes de recriar', { providerId, idExterno })
+        }
+      }
       await criarConexaoOAuth(sessao.token, {
         provider: providerId,
-        label: `${provider.nome} ${new Date().toLocaleString('pt-BR')}`,
+        label: nomeExtraido ? `${provider.nome} · ${nomeExtraido}` : provider.nome,
+        external_label: idExterno ? `#${idExterno}` : undefined,
         oauth_tokens: tokens,
       })
       await log('oauth: conexao salva automaticamente', { provider: providerId })

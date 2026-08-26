@@ -109,7 +109,7 @@ export function criarConexao(
 // backend/app/routes/unofficial_connections.py.
 export function criarConexaoOAuth(
   token: string,
-  payload: { provider: string; label: string; oauth_tokens: unknown },
+  payload: { provider: string; label: string; external_label?: string; oauth_tokens: unknown },
 ): Promise<UnofficialConnection> {
   return request<UnofficialConnection>(
     '/api/unofficial-connections',
