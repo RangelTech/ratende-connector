@@ -11,6 +11,11 @@ export interface UnofficialProvider {
   loginUrl: string
   cookieDomain: string
   cookieDeSessao: string[]
+  // 26/08/2026, pedido do dono: rotulo mostrado na lista precisa
+  // identificar a conta (nao a data da captura), e permite deduplicar --
+  // reconectar a mesma conta atualiza em vez de duplicar. Cookie cujo
+  // valor e' o ID numerico estavel da conta (nao muda entre logins).
+  cookieIdExterno: string
 }
 
 export const PROVIDERS: UnofficialProvider[] = [
@@ -20,6 +25,7 @@ export const PROVIDERS: UnofficialProvider[] = [
     loginUrl: 'https://www.instagram.com/accounts/login/',
     cookieDomain: 'instagram.com',
     cookieDeSessao: ['sessionid'],
+    cookieIdExterno: 'ds_user_id',
   },
   {
     id: 'facebook_web',
@@ -27,6 +33,7 @@ export const PROVIDERS: UnofficialProvider[] = [
     loginUrl: 'https://www.facebook.com/login',
     cookieDomain: 'facebook.com',
     cookieDeSessao: ['c_user', 'xs'],
+    cookieIdExterno: 'c_user',
   },
   {
     id: 'tiktok_web',
@@ -34,6 +41,7 @@ export const PROVIDERS: UnofficialProvider[] = [
     loginUrl: 'https://www.tiktok.com/login',
     cookieDomain: 'tiktok.com',
     cookieDeSessao: ['sessionid', 'sid_tt'],
+    cookieIdExterno: 'uid_tt',
   },
 ]
 

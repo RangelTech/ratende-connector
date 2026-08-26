@@ -14,7 +14,7 @@
 import { findProvider, type ProviderId } from '../lib/providers'
 import { log, logErro } from '../lib/logger'
 import { lerSessao } from '../lib/storage'
-import { criarConexao } from '../lib/api'
+import { criarConexao, listarConexoes, removerConexao } from '../lib/api'
 
 interface PendenteCookie {
   provider: ProviderId
@@ -63,7 +63,16 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
   const detectados = cookies
     .filter((c) => provider.cookieDeSessao.includes(c.name))
     .map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }))
-  await log('sessao detectada (cookie)', { provider: providerId, cookies: detectados.map((c) => c.name) })
+  // ID externo estavel da conta (cookie que nao muda entre logins) -- usado
+  // pra rotular a lista (26/08/2026, pedido do dono: mostrar quem é a
+  // conta, nao a data da captura) e pra deduplicar (reconectar a mesma
+  // conta atualiza em vez de empilhar duplicata).
+  const idExterno = cookies.find((c) => c.name === provider.cookieIdExterno)?.value ?? null
+  await log('sessao detectada (cookie)', {
+    provider: providerId,
+    cookies: detectados.map((c) => c.name),
+    idExterno,
+  })
   await limparPendente()
 
   const chaveResultado = `ratende_connector_cookie_resultado_${providerId}`
@@ -74,9 +83,21 @@ async function conferirAgora(providerId: ProviderId): Promise<void> {
     return
   }
   try {
+    if (idExterno) {
+      const existentes = await listarConexoes(sessao.token)
+      const duplicada = existentes.find((c) => c.provider === providerId && c.external_label === `#${idExterno}`)
+      if (duplicada) {
+        await removerConexao(sessao.token, duplicada.id)
+        await log('conexao duplicada removida antes de recriar (mesma conta reconectada)', {
+          provider: providerId,
+          idExterno,
+        })
+      }
+    }
     await criarConexao(sessao.token, {
       provider: providerId,
-      label: `${provider.nome} ${new Date().toLocaleString('pt-BR')}`,
+      label: provider.nome,
+      external_label: idExterno ? `#${idExterno}` : undefined,
       cookies: detectados,
     })
     await log('conexao salva automaticamente', { provider: providerId })
