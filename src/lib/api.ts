@@ -55,7 +55,10 @@ export interface LoginResponse {
 export function login(email: string, password: string): Promise<LoginResponse> {
   return request<LoginResponse>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    // "extension": marca a sessao como sem expiracao por inatividade no
+    // backend (28/08/2026) -- a extensao roda em segundo plano, sem
+    // interacao humana constante pra renovar o timeout de 8h do painel web.
+    body: JSON.stringify({ email, password, client: 'extension' }),
   })
 }
 
